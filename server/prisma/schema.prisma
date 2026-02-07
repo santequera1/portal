@@ -1,0 +1,405 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  code      String   @unique
+  createdAt DateTime @default(now())
+
+  classes      Class[]
+  subjects     Subject[]
+  students     Student[]
+  transactions Transaction[]
+  sedes        Sede[]
+  staffOrgs    StaffOrganization[]
+  schedules    Schedule[]
+}
+
+model Sede {
+  id             Int      @id @default(autoincrement())
+  name           String
+  address        String?
+  phone          String?
+  organizationId Int
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("STUDENT")
+  phone     String?
+  address   String?
+  cargo     String?
+  avatar    String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student     Student?
+  staffMember StaffMember?
+}
+
+model AcademicSession {
+  id        Int      @id @default(autoincrement())
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  classes    Class[]
+  feeGroups  FeeGroup[]
+  examGroups ExamGroup[]
+}
+
+model Class {
+  id             Int      @id @default(autoincrement())
+  name           String
+  order          Int
+  sessionId      Int
+  category       String   @default("REGULAR")
+  organizationId Int?
+  createdAt      DateTime @default(now())
+
+  session            AcademicSession     @relation(fields: [sessionId], references: [id])
+  organization       Organization?       @relation(fields: [organizationId], references: [id])
+  sections           Section[]
+  classSubjects      ClassSubject[]
+  students           Student[]
+  teacherAssignments TeacherAssignment[]
+  exams              Exam[]
+  schedules          Schedule[]
+}
+
+model Section {
+  id        Int      @id @default(autoincrement())
+  name      String
+  classId   Int
+  createdAt DateTime @default(now())
+
+  class              Class               @relation(fields: [classId], references: [id])
+  students           Student[]
+  teacherAssignments TeacherAssignment[]
+  attendances        Attendance[]
+  schedules          Schedule[]
+}
+
+model Subject {
+  id             Int      @id @default(autoincrement())
+  name           String
+  code           String   @unique
+  organizationId Int?
+  createdAt      DateTime @default(now())
+
+  organization       Organization?       @relation(fields: [organizationId], references: [id])
+  classSubjects      ClassSubject[]
+  teacherAssignments TeacherAssignment[]
+  exams              Exam[]
+  schedules          Schedule[]
+}
+
+model ClassSubject {
+  id        Int      @id @default(autoincrement())
+  classId   Int
+  subjectId Int
+  createdAt DateTime @default(now())
+
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, subjectId])
+}
+
+model TeacherAssignment {
+  id        Int @id @default(autoincrement())
+  teacherId Int
+  subjectId Int
+  classId   Int
+  sectionId Int
+
+  teacher StaffMember @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subject Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  class   Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section Section     @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, subjectId, classId, sectionId])
+}
+
+model Student {
+  id               Int       @id @default(autoincrement())
+  admissionNo      String    @unique
+  name             String
+  lastName         String?
+  dateOfBirth      DateTime?
+  gender           String
+  bloodGroup       String?
+  religion         String?
+  nationality      String?   @default("Colombiana")
+  photo            String?
+
+  // Identificacion
+  tipoIdentificacion    String?
+  numeroIdentificacion  String?
+  fechaExpedicion       DateTime?
+  lugarExpedicion       String?
+  lugarNacimiento       String?
+
+  // Seguridad Social
+  numeroContrato   String?
+  numeroPoliza     String?
+  numeroCotizacion String?
+  certificado      String?
+  eps              String?
+
+  // Responsable / Acudiente
+  responsableTipo       String?
+  fatherName            String?
+  fatherPhone           String?
+  fatherEmail           String?
+  fatherOccupation      String?
+  motherName            String?
+  motherPhone           String?
+  acudienteNombre       String?
+  acudienteTelefono     String?
+  acudienteEmail        String?
+  acudienteOcupacion    String?
+
+  address          String?
+  classId          Int
+  sectionId        Int
+  organizationId   Int?
+  enrollmentDate   DateTime  @default(now())
+  exalumno         Boolean   @default(false)
+  fechaSalida      DateTime?
+  status           String    @default("active")
+  userId           Int?      @unique
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  class        Class         @relation(fields: [classId], references: [id])
+  section      Section       @relation(fields: [sectionId], references: [id])
+  user         User?         @relation(fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  attendances  Attendance[]
+  fees         Fee[]
+  payments     Payment[]
+  marks        Mark[]
+}
+
+model StaffMember {
+  id          Int      @id @default(autoincrement())
+  name        String
+  department  String?
+  designation String?
+  phone       String?
+  email       String?
+  joinDate    DateTime @default(now())
+  userId      Int?     @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user               User?               @relation(fields: [userId], references: [id])
+  teacherAssignments TeacherAssignment[]
+  staffAttendances   StaffAttendance[]
+  staffOrgs          StaffOrganization[]
+  schedules          Schedule[]
+}
+
+model StaffOrganization {
+  id             Int @id @default(autoincrement())
+  staffId        Int
+  organizationId Int
+
+  staff        StaffMember  @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, organizationId])
+}
+
+model Attendance {
+  id        Int      @id @default(autoincrement())
+  studentId Int
+  sectionId Int
+  date      DateTime
+  status    String
+  remarks   String?
+  createdAt DateTime @default(now())
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  section Section @relation(fields: [sectionId], references: [id])
+
+  @@unique([studentId, date])
+}
+
+model StaffAttendance {
+  id      Int      @id @default(autoincrement())
+  staffId Int
+  date    DateTime
+  status  String
+  remarks String?
+
+  staff StaffMember @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, date])
+}
+
+model FeeType {
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now())
+
+  fees Fee[]
+}
+
+model FeeGroup {
+  id        Int      @id @default(autoincrement())
+  name      String
+  sessionId Int
+  createdAt DateTime @default(now())
+
+  session AcademicSession @relation(fields: [sessionId], references: [id])
+}
+
+model Fee {
+  id        Int      @id @default(autoincrement())
+  studentId Int
+  feeTypeId Int
+  amount    Float
+  dueDate   DateTime
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student  Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  feeType  FeeType   @relation(fields: [feeTypeId], references: [id])
+  payments Payment[]
+}
+
+model Payment {
+  id        Int      @id @default(autoincrement())
+  feeId     Int
+  studentId Int
+  amount    Float
+  date      DateTime @default(now())
+  method    String   @default("CASH")
+  reference String?
+  createdAt DateTime @default(now())
+
+  fee     Fee     @relation(fields: [feeId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+}
+
+model Transaction {
+  id             Int      @id @default(autoincrement())
+  type           String
+  description    String
+  amount         Float
+  date           DateTime @default(now())
+  category       String
+  status         String   @default("completed")
+  organizationId Int?
+  createdAt      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+}
+
+model ExamGroup {
+  id        Int      @id @default(autoincrement())
+  name      String
+  sessionId Int
+  createdAt DateTime @default(now())
+
+  session AcademicSession @relation(fields: [sessionId], references: [id])
+  exams   Exam[]
+}
+
+model Exam {
+  id          Int      @id @default(autoincrement())
+  examGroupId Int
+  subjectId   Int
+  classId     Int
+  date        DateTime
+  startTime   String?
+  duration    Int?
+  maxMarks    Float    @default(5.0)
+  createdAt   DateTime @default(now())
+
+  examGroup ExamGroup @relation(fields: [examGroupId], references: [id])
+  subject   Subject   @relation(fields: [subjectId], references: [id])
+  class     Class     @relation(fields: [classId], references: [id])
+  marks     Mark[]
+}
+
+model Mark {
+  id            Int      @id @default(autoincrement())
+  examId        Int
+  studentId     Int
+  marksObtained Float
+  remarks       String?
+  createdAt     DateTime @default(now())
+
+  exam    Exam    @relation(fields: [examId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, studentId])
+}
+
+model GradeScale {
+  id       Int    @id @default(autoincrement())
+  name     String
+  minMarks Float
+  maxMarks Float
+  grade    String
+  gpa      Float
+}
+
+model Event {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String?
+  date        DateTime
+  time        String?
+  location    String?
+  type        String   @default("event")
+  createdAt   DateTime @default(now())
+}
+
+model Schedule {
+  id             Int      @id @default(autoincrement())
+  title          String
+  description    String?
+  dayOfWeek      Int
+  startTime      String
+  endTime        String
+  room           String?
+  classId        Int?
+  sectionId      Int?
+  subjectId      Int?
+  teacherId      Int?
+  organizationId Int?
+  createdAt      DateTime @default(now())
+
+  class        Class?        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section      Section?      @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject      Subject?      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher      StaffMember?  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id])
+}
+
+model SchoolConfig {
+  id       Int    @id @default(autoincrement())
+  key      String @unique
+  value    String
+}
