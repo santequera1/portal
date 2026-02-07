@@ -15,6 +15,7 @@ import { configRouter } from './routes/config.routes';
 import { searchRouter } from './routes/search.routes';
 import { organizationRouter } from './routes/organization.routes';
 import { scheduleRouter } from './routes/schedule.routes';
+import { webhookRouter } from './routes/webhook.routes';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -37,6 +38,7 @@ app.use('/api/config', configRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/organizations', organizationRouter);
 app.use('/api/schedules', scheduleRouter);
+app.use('/api/webhook', webhookRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => {
