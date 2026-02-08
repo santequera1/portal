@@ -89,6 +89,9 @@ const studentFormSchema = z.object({
     required_error: "Selecciona el genero",
   }),
   dateOfBirth: z.string().optional(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  bloodGroup: z.string().optional(),
 
   // Identificacion
   tipoIdentificacion: z.string().optional(),
@@ -100,11 +103,12 @@ const studentFormSchema = z.object({
   sectionId: z.coerce.number({ required_error: "Selecciona la seccion" }).min(1, "Selecciona la seccion"),
 
   // Seguridad Social
+  tipoSalud: z.string().optional(),
+  eps: z.string().optional(),
   numeroContrato: z.string().optional(),
   numeroPoliza: z.string().optional(),
   numeroCotizacion: z.string().optional(),
   certificado: z.string().optional(),
-  eps: z.string().optional(),
 
   // Historial
   exalumno: z.boolean().optional(),
@@ -135,6 +139,8 @@ const EPS_OPTIONS = [
   "Sanitas",
   "A1",
 ] as const;
+
+const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"] as const;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -277,16 +283,20 @@ export default function Estudiantes() {
       lastName: "",
       gender: undefined,
       dateOfBirth: "",
+      email: "",
+      phone: "",
+      bloodGroup: "",
       tipoIdentificacion: "",
       numeroIdentificacion: "",
       fechaExpedicion: "",
       classId: 0,
       sectionId: 0,
+      tipoSalud: "",
+      eps: "",
       numeroContrato: "",
       numeroPoliza: "",
       numeroCotizacion: "",
       certificado: "",
-      eps: "",
       exalumno: false,
       fechaSalida: "",
       responsableTipo: "",
@@ -317,16 +327,20 @@ export default function Estudiantes() {
       lastName: "",
       gender: undefined,
       dateOfBirth: "",
+      email: "",
+      phone: "",
+      bloodGroup: "",
       tipoIdentificacion: "",
       numeroIdentificacion: "",
       fechaExpedicion: "",
       classId: 0,
       sectionId: 0,
+      tipoSalud: "",
+      eps: "",
       numeroContrato: "",
       numeroPoliza: "",
       numeroCotizacion: "",
       certificado: "",
-      eps: "",
       exalumno: false,
       fechaSalida: "",
       responsableTipo: "",
@@ -352,16 +366,20 @@ export default function Estudiantes() {
         lastName: student.lastName ?? "",
         gender: student.gender as "Masculino" | "Femenino",
         dateOfBirth: student.dateOfBirth ? student.dateOfBirth.slice(0, 10) : "",
+        email: student.email ?? "",
+        phone: student.phone ?? "",
+        bloodGroup: student.bloodGroup ?? "",
         tipoIdentificacion: student.tipoIdentificacion ?? "",
         numeroIdentificacion: student.numeroIdentificacion ?? "",
         fechaExpedicion: student.fechaExpedicion ? student.fechaExpedicion.slice(0, 10) : "",
         classId: student.classId,
         sectionId: student.sectionId,
+        tipoSalud: student.tipoSalud ?? "",
+        eps: student.eps ?? "",
         numeroContrato: student.numeroContrato ?? "",
         numeroPoliza: student.numeroPoliza ?? "",
         numeroCotizacion: student.numeroCotizacion ?? "",
         certificado: student.certificado ?? "",
-        eps: student.eps ?? "",
         exalumno: student.exalumno ?? false,
         fechaSalida: student.fechaSalida ? student.fechaSalida.slice(0, 10) : "",
         responsableTipo: student.responsableTipo ?? "",
@@ -836,6 +854,59 @@ export default function Estudiantes() {
                 />
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Correo electronico</FormLabel>
+                      <FormControl>
+                        <Input type="email" placeholder="correo@ejemplo.com" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Telefono</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ej: 300-123-4567" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="bloodGroup"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tipo de sangre</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {BLOOD_TYPES.map((bt) => (
+                            <SelectItem key={bt} value={bt}>
+                              {bt}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
               {/* ---- IDENTIFICACION ---- */}
               <div className="border-b border-border pb-2 pt-2">
                 <p className="text-sm font-semibold text-foreground">Identificacion</p>
@@ -981,28 +1052,77 @@ export default function Estudiantes() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
-                  name="eps"
+                  name="tipoSalud"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>EPS / SISBEN</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                      <FormLabel>Tipo de cobertura</FormLabel>
+                      <Select
+                        onValueChange={(v) => {
+                          field.onChange(v);
+                          form.setValue("eps", "");
+                        }}
+                        value={field.value ?? ""}
+                      >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Seleccionar EPS" />
+                            <SelectValue placeholder="Seleccionar tipo" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {EPS_OPTIONS.map((eps) => (
-                            <SelectItem key={eps} value={eps}>
-                              {eps}
-                            </SelectItem>
-                          ))}
+                          <SelectItem value="EPS">EPS</SelectItem>
+                          <SelectItem value="SISBEN">SISBEN</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+
+                {form.watch("tipoSalud") === "EPS" && (
+                  <FormField
+                    control={form.control}
+                    name="eps"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>EPS</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar EPS" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {EPS_OPTIONS.map((eps) => (
+                              <SelectItem key={eps} value={eps}>
+                                {eps}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                {form.watch("tipoSalud") === "SISBEN" && (
+                  <FormField
+                    control={form.control}
+                    name="eps"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>SISBEN</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Ej: Grupo A, Subgrupo 5" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
                   name="numeroContrato"
@@ -1016,9 +1136,6 @@ export default function Estudiantes() {
                     </FormItem>
                   )}
                 />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <FormField
                   control={form.control}
                   name="numeroPoliza"
@@ -1032,6 +1149,9 @@ export default function Estudiantes() {
                     </FormItem>
                   )}
                 />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
                   name="numeroCotizacion"
@@ -1357,6 +1477,33 @@ export default function Estudiantes() {
                 </div>
               </div>
 
+              {/* Contacto */}
+              {(profileStudent.email || profileStudent.phone || profileStudent.bloodGroup) && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Contacto y Salud</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    {profileStudent.email && (
+                      <div className="p-3 rounded-lg bg-muted/30">
+                        <p className="text-xs text-muted-foreground">Correo</p>
+                        <p className="font-medium text-sm">{profileStudent.email}</p>
+                      </div>
+                    )}
+                    {profileStudent.phone && (
+                      <div className="p-3 rounded-lg bg-muted/30">
+                        <p className="text-xs text-muted-foreground">Telefono</p>
+                        <p className="font-medium font-mono">{profileStudent.phone}</p>
+                      </div>
+                    )}
+                    {profileStudent.bloodGroup && (
+                      <div className="p-3 rounded-lg bg-muted/30">
+                        <p className="text-xs text-muted-foreground">Tipo de Sangre</p>
+                        <p className="font-medium">{profileStudent.bloodGroup}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Identificacion */}
               {(profileStudent.tipoIdentificacion || profileStudent.numeroIdentificacion) && (
                 <div className="space-y-3">
@@ -1428,10 +1575,10 @@ export default function Estudiantes() {
                 <div className="space-y-3">
                   <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Seguridad Social</h4>
                   <div className="grid grid-cols-2 gap-3">
-                    {profileStudent.eps && (
+                    {(profileStudent.tipoSalud || profileStudent.eps) && (
                       <div className="p-3 rounded-lg bg-muted/30">
-                        <p className="text-xs text-muted-foreground">EPS / SISBEN</p>
-                        <p className="font-medium">{profileStudent.eps}</p>
+                        <p className="text-xs text-muted-foreground">{profileStudent.tipoSalud || "EPS / SISBEN"}</p>
+                        <p className="font-medium">{profileStudent.eps || "-"}</p>
                       </div>
                     )}
                     {profileStudent.numeroContrato && (

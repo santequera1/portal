@@ -66,9 +66,15 @@ export async function createStudent(req: AuthRequest, res: Response) {
     const admissionNo = await generateAdmissionNo();
     const data = { ...req.body, admissionNo };
 
-    if (data.dateOfBirth) data.dateOfBirth = new Date(data.dateOfBirth);
-    if (data.fechaExpedicion) data.fechaExpedicion = new Date(data.fechaExpedicion);
-    if (data.fechaSalida) data.fechaSalida = new Date(data.fechaSalida);
+    // Convert date strings to Date objects, remove empty strings
+    data.dateOfBirth = data.dateOfBirth ? new Date(data.dateOfBirth) : null;
+    data.fechaExpedicion = data.fechaExpedicion ? new Date(data.fechaExpedicion) : null;
+    data.fechaSalida = data.fechaSalida ? new Date(data.fechaSalida) : null;
+
+    // Strip empty strings for optional fields (Prisma expects null, not "")
+    for (const key of Object.keys(data)) {
+      if (data[key] === '') data[key] = null;
+    }
 
     const student = await prisma.student.create({
       data,
@@ -87,9 +93,15 @@ export async function updateStudent(req: AuthRequest, res: Response) {
     const { id } = req.params;
     const data = { ...req.body };
 
-    if (data.dateOfBirth) data.dateOfBirth = new Date(data.dateOfBirth);
-    if (data.fechaExpedicion) data.fechaExpedicion = new Date(data.fechaExpedicion);
-    if (data.fechaSalida) data.fechaSalida = new Date(data.fechaSalida);
+    // Convert date strings to Date objects, remove empty strings
+    data.dateOfBirth = data.dateOfBirth ? new Date(data.dateOfBirth) : null;
+    data.fechaExpedicion = data.fechaExpedicion ? new Date(data.fechaExpedicion) : null;
+    data.fechaSalida = data.fechaSalida ? new Date(data.fechaSalida) : null;
+
+    // Strip empty strings for optional fields
+    for (const key of Object.keys(data)) {
+      if (data[key] === '') data[key] = null;
+    }
 
     const student = await prisma.student.update({
       where: { id: parseInt(id) },

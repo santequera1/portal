@@ -39,6 +39,8 @@ export interface Student {
   religion?: string;
   nationality?: string;
   photo?: string;
+  email?: string;
+  phone?: string;
 
   // Identificacion
   tipoIdentificacion?: string;
@@ -48,6 +50,7 @@ export interface Student {
   lugarNacimiento?: string;
 
   // Seguridad Social
+  tipoSalud?: string;
   numeroContrato?: string;
   numeroPoliza?: string;
   numeroCotizacion?: string;

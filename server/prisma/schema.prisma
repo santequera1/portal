@@ -148,6 +148,8 @@ model Student {
   religion         String?
   nationality      String?   @default("Colombiana")
   photo            String?
+  email            String?
+  phone            String?
 
   // Identificacion
   tipoIdentificacion    String?
@@ -157,6 +159,7 @@ model Student {
   lugarNacimiento       String?
 
   // Seguridad Social
+  tipoSalud        String?
   numeroContrato   String?
   numeroPoliza     String?
   numeroCotizacion String?

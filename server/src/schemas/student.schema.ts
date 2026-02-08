@@ -8,6 +8,8 @@ export const createStudentSchema = z.object({
   bloodGroup: z.string().optional(),
   religion: z.string().optional(),
   nationality: z.string().optional(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
 
   // Identificacion
   tipoIdentificacion: z.string().optional(),
@@ -15,6 +17,7 @@ export const createStudentSchema = z.object({
   fechaExpedicion: z.string().optional(),
 
   // Seguridad Social
+  tipoSalud: z.string().optional(),
   numeroContrato: z.string().optional(),
   numeroPoliza: z.string().optional(),
   numeroCotizacion: z.string().optional(),
@@ -37,6 +40,7 @@ export const createStudentSchema = z.object({
   address: z.string().optional(),
   classId: z.number({ required_error: 'Clase requerida' }),
   sectionId: z.number({ required_error: 'Seccion requerida' }),
+  organizationId: z.number().optional().nullable(),
 
   // Historial academico
   exalumno: z.boolean().optional(),
