@@ -75,6 +75,7 @@ import {
 
 import { useStudents, useCreateStudent, useUpdateStudent, useDeleteStudent } from "@/hooks/useStudents";
 import { useClasses } from "@/hooks/useClasses";
+import { useSedes } from "@/hooks/useSedes";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import type { Student } from "@/types";
@@ -101,6 +102,7 @@ const studentFormSchema = z.object({
   // Curso
   classId: z.coerce.number({ required_error: "Selecciona el curso" }).min(1, "Selecciona el curso"),
   sectionId: z.coerce.number({ required_error: "Selecciona la seccion" }).min(1, "Selecciona la seccion"),
+  sedeId: z.coerce.number().optional(),
 
   // Seguridad Social
   tipoSalud: z.string().optional(),
@@ -222,6 +224,7 @@ export default function Estudiantes() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [classFilter, setClassFilter] = useState<string>("");
   const [sectionFilter, setSectionFilter] = useState<string>("");
+  const [sedeFilter, setSedeFilter] = useState<string>("");
   const [page, setPage] = useState(1);
 
   // ---- Sheet / dialog state ----
@@ -251,11 +254,15 @@ export default function Estudiantes() {
   const { data: classesData } = useClasses();
   const classes = classesData ?? [];
 
+  const { data: sedesDataList } = useSedes(selectedOrgId);
+  const sedesList = sedesDataList ?? [];
+
   const studentsQuery = useStudents({
     page,
     search: debouncedSearch || undefined,
     classId: classFilter ? Number(classFilter) : undefined,
     sectionId: sectionFilter ? Number(sectionFilter) : undefined,
+    sedeId: sedeFilter ? Number(sedeFilter) : undefined,
   });
 
   const students = studentsQuery.data?.students ?? [];
@@ -291,6 +298,7 @@ export default function Estudiantes() {
       fechaExpedicion: "",
       classId: 0,
       sectionId: 0,
+      sedeId: 0,
       tipoSalud: "",
       eps: "",
       numeroContrato: "",
@@ -319,6 +327,17 @@ export default function Estudiantes() {
     return cls?.sections ?? [];
   }, [selectedFormClassId, classes]);
 
+  // Determine organization based on selected class
+  const formOrganizationId = useMemo(() => {
+    if (!selectedFormClassId) return undefined;
+    const cls = classes.find((c) => c.id === Number(selectedFormClassId));
+    return cls?.organizationId;
+  }, [selectedFormClassId, classes]);
+
+  // Fetch sedes for the selected organization
+  const { data: sedesData } = useSedes(formOrganizationId);
+  const formSedes = sedesData ?? [];
+
   // ---- Open sheet for create ----
   const handleOpenCreate = useCallback(() => {
     setEditingStudent(null);
@@ -335,6 +354,7 @@ export default function Estudiantes() {
       fechaExpedicion: "",
       classId: 0,
       sectionId: 0,
+      sedeId: 0,
       tipoSalud: "",
       eps: "",
       numeroContrato: "",
@@ -374,6 +394,7 @@ export default function Estudiantes() {
         fechaExpedicion: student.fechaExpedicion ? student.fechaExpedicion.slice(0, 10) : "",
         classId: student.classId,
         sectionId: student.sectionId,
+        sedeId: student.sedeId ?? 0,
         tipoSalud: student.tipoSalud ?? "",
         eps: student.eps ?? "",
         numeroContrato: student.numeroContrato ?? "",
@@ -486,6 +507,11 @@ export default function Estudiantes() {
     setPage(1);
   }, []);
 
+  const handleSedeFilterChange = useCallback((value: string) => {
+    setSedeFilter(value === "all" ? "" : value);
+    setPage(1);
+  }, []);
+
   const isMutating = createStudent.isPending || updateStudent.isPending;
 
   return (
@@ -573,6 +599,26 @@ export default function Estudiantes() {
                 ))}
               </SelectContent>
             </Select>
+
+            {/* Sede filter */}
+            {sedesList.length > 0 && (
+              <Select
+                value={sedeFilter || "all"}
+                onValueChange={handleSedeFilterChange}
+              >
+                <SelectTrigger className="w-full md:w-[160px]">
+                  <SelectValue placeholder="Sede" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las sedes</SelectItem>
+                  {sedesList.map((sede) => (
+                    <SelectItem key={sede.id} value={String(sede.id)}>
+                      {sede.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
 
             {/* Export button */}
             <Button variant="outline" className="gap-2">
@@ -1043,6 +1089,40 @@ export default function Estudiantes() {
                   )}
                 />
               </div>
+
+              {/* ---- SEDE ---- */}
+              {formSedes.length > 0 && (
+                <div className="grid grid-cols-1 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="sedeId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Sede</FormLabel>
+                        <Select
+                          onValueChange={(v) => field.onChange(Number(v))}
+                          value={field.value ? String(field.value) : ""}
+                          disabled={!formOrganizationId}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar sede" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {formSedes.map((sede) => (
+                              <SelectItem key={sede.id} value={String(sede.id)}>
+                                {sede.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
 
               {/* ---- SEGURIDAD SOCIAL ---- */}
               <div className="border-b border-border pb-2 pt-2">
@@ -1539,6 +1619,12 @@ export default function Estudiantes() {
                     <p className="text-xs text-muted-foreground">Seccion</p>
                     <p className="font-medium">{profileStudent.section?.name || "-"}</p>
                   </div>
+                  {profileStudent.sede && (
+                    <div className="p-3 rounded-lg bg-muted/30">
+                      <p className="text-xs text-muted-foreground">Sede</p>
+                      <p className="font-medium">{profileStudent.sede.name}</p>
+                    </div>
+                  )}
                   <div className="p-3 rounded-lg bg-muted/30">
                     <p className="text-xs text-muted-foreground">Genero</p>
                     <p className="font-medium">{profileStudent.gender}</p>

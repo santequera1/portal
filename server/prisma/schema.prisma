@@ -31,6 +31,7 @@ model Sede {
   createdAt      DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id])
+  students     Student[]
 }
 
 model User {
@@ -183,6 +184,7 @@ model Student {
   classId          Int
   sectionId        Int
   organizationId   Int?
+  sedeId           Int?
   enrollmentDate   DateTime  @default(now())
   exalumno         Boolean   @default(false)
   fechaSalida      DateTime?
@@ -195,6 +197,7 @@ model Student {
   section      Section       @relation(fields: [sectionId], references: [id])
   user         User?         @relation(fields: [userId], references: [id])
   organization Organization? @relation(fields: [organizationId], references: [id])
+  sede         Sede?         @relation(fields: [sedeId], references: [id])
   attendances  Attendance[]
   fees         Fee[]
   payments     Payment[]

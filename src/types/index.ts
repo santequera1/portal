@@ -74,12 +74,14 @@ export interface Student {
   classId: number;
   sectionId: number;
   organizationId?: number;
+  sedeId?: number;
   enrollmentDate: string;
   exalumno?: boolean;
   fechaSalida?: string;
   status: 'active' | 'inactive' | 'graduated' | 'transferred';
   class: ClassInfo;
   section: SectionInfo;
+  sede?: Sede;
   createdAt: string;
   updatedAt: string;
 }

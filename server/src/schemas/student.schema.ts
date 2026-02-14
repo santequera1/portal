@@ -41,6 +41,7 @@ export const createStudentSchema = z.object({
   classId: z.number({ required_error: 'Clase requerida' }),
   sectionId: z.number({ required_error: 'Seccion requerida' }),
   organizationId: z.number().optional().nullable(),
+  sedeId: z.number().optional().nullable(),
 
   // Historial academico
   exalumno: z.boolean().optional(),

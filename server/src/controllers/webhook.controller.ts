@@ -21,13 +21,14 @@ export async function webhookOrganizations(_req: Request, res: Response) {
 // ============ STUDENTS ============
 export async function webhookStudents(req: Request, res: Response) {
   try {
-    const { page = '1', limit = '20', classId, sectionId, search, status, organizationId } = req.query;
+    const { page = '1', limit = '20', classId, sectionId, search, status, organizationId, sedeId } = req.query;
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
     const skip = (pageNum - 1) * limitNum;
 
     const where: any = {};
     if (organizationId) where.organizationId = parseInt(organizationId as string);
+    if (sedeId) where.sedeId = parseInt(sedeId as string);
     if (classId) where.classId = parseInt(classId as string);
     if (sectionId) where.sectionId = parseInt(sectionId as string);
     if (status) where.status = status;
@@ -45,7 +46,7 @@ export async function webhookStudents(req: Request, res: Response) {
     const [students, total] = await Promise.all([
       prisma.student.findMany({
         where,
-        include: { class: true, section: true },
+        include: { class: true, section: true, sede: true },
         skip,
         take: limitNum,
         orderBy: { createdAt: 'desc' },
@@ -67,6 +68,7 @@ export async function webhookStudentDetail(req: Request, res: Response) {
       include: {
         class: true,
         section: true,
+        sede: true,
         fees: { include: { feeType: true, payments: true } },
         attendances: { orderBy: { date: 'desc' }, take: 30 },
       },

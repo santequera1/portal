@@ -1,0 +1,48 @@
+{
+  "nombre": "Maria Fernanda",
+  "apellido": "Lopez Herrera",
+  "genero": "Femenino",
+  "fechaNacimiento": "2003-08-15",
+  "correo": "maria.lopez@gmail.com",
+  "telefono": "300-456-7890",
+  "tipoDeSangre": "O+",
+
+  "identificacion": {
+    "tipo": "CC",
+    "numero": "1047523698",
+    "fechaExpedicion": "2021-03-20"
+  },
+
+  "curso": {
+    "carrera": "Tec. en Enfermeria",
+    "seccion": "Jornada A"
+  },
+
+  "seguridadSocial": {
+    "tipoCobertura": "EPS",
+    "eps": "Nueva EPS",
+    "numeroContrato": "CT2600045821",
+    "numeroPoliza": "2000785432",
+    "numeroCotizacion": "PR260204002145",
+    "certificado": "10458723"
+  },
+
+  "responsable": {
+    "tipo": "Madre",
+    "nombreMadre": "Carmen Rosa Herrera Diaz",
+    "telefonoMadre": "301-234-5678"
+  },
+
+  "direccion": "Calle 45 #12-30, Barrio Olaya Herrera, Cartagena",
+
+  "_notas": {
+    "camposObligatorios": ["nombre", "genero", "curso", "seccion"],
+    "camposOpcionales": ["numeroContrato", "numeroPoliza", "numeroCotizacion", "certificado"],
+    "tiposIdentificacion": ["CC (Cedula de Ciudadania)", "TI (Tarjeta de Identidad)", "CE (Cedula de Extranjeria)"],
+    "tiposCobertura": ["EPS", "SISBEN"],
+    "epsDisponibles": ["Familiar de Colombia", "Nueva EPS", "Salud Total", "Cajacopi", "Anas Wayuu", "Sanitas", "A1"],
+    "tiposSangre": ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
+    "tiposResponsable": ["Padre", "Madre", "Acudiente", "Estudiante (mayor de edad)"],
+    "ejemploSISBEN": "Si el tipo de cobertura es SISBEN, en vez de seleccionar EPS se escribe el nivel. Ej: Grupo A, Subgrupo 5"
+  }
+}

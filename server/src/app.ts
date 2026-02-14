@@ -16,6 +16,7 @@ import { searchRouter } from './routes/search.routes';
 import { organizationRouter } from './routes/organization.routes';
 import { scheduleRouter } from './routes/schedule.routes';
 import { webhookRouter } from './routes/webhook.routes';
+import { sedeRouter } from './routes/sede.routes';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -39,6 +40,7 @@ app.use('/api/search', searchRouter);
 app.use('/api/organizations', organizationRouter);
 app.use('/api/schedules', scheduleRouter);
 app.use('/api/webhook', webhookRouter);
+app.use('/api/sedes', sedeRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => {
