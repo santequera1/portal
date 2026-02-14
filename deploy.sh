@@ -7,7 +7,7 @@ echo "🚀 Iniciando despliegue a VPS..."
 # Conectar al VPS y ejecutar comandos
 ssh ubuntu@51.195.109.26 << 'ENDSSH'
     echo "📦 Navegando al directorio del proyecto..."
-    cd /home/ubuntu/minerva
+    cd /var/www/portal
 
     echo "⬇️  Descargando últimos cambios de GitHub..."
     git pull origin main
@@ -22,14 +22,17 @@ ssh ubuntu@51.195.109.26 << 'ENDSSH'
     echo "🔄 Regenerando cliente de Prisma..."
     npx prisma generate
 
+    echo "🔨 Compilando código TypeScript..."
+    npm run build
+
     echo "♻️  Reiniciando servidor con PM2..."
-    pm2 restart minerva-api
+    pm2 restart portal-api
 
     echo "✅ Verificando estado del servidor..."
     pm2 status
 
     echo "📋 Mostrando logs recientes..."
-    pm2 logs minerva-api --lines 20 --nostream
+    pm2 logs portal-api --lines 20 --nostream
 
     echo "🏥 Verificando salud del API..."
     curl -s http://localhost:3001/api/health | jq '.'
