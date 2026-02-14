@@ -9,6 +9,7 @@ import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Login from "./pages/Login";
 import Index from "./pages/Index";
 import Estudiantes from "./pages/Estudiantes";
+import EstudianteDetalle from "./pages/EstudianteDetalle";
 import Finanzas from "./pages/Finanzas";
 import Personal from "./pages/Personal";
 import Academico from "./pages/Academico";
@@ -43,6 +44,7 @@ const App = () => (
             <Route element={<ProtectedRoute />}>
               <Route path="/" element={<Index />} />
               <Route path="/estudiantes" element={<Estudiantes />} />
+              <Route path="/estudiantes/:id" element={<EstudianteDetalle />} />
               <Route path="/finanzas" element={<Finanzas />} />
               <Route path="/personal" element={<Personal />} />
               <Route path="/academico" element={<Academico />} />

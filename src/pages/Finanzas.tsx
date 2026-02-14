@@ -55,7 +55,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { useFees, useFinanceSummary, useCreatePayment } from "@/hooks/useFees";
+import { useFees, useFinanceSummary, useCreatePayment, useDeleteFee } from "@/hooks/useFees";
 import { useTransactions, useCreateTransaction, useDeleteTransaction } from "@/hooks/useTransactions";
 import { useSearch } from "@/hooks/useSearch";
 import {
@@ -733,6 +733,10 @@ export default function Finanzas() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
 
+  // Delete fee state
+  const [deleteFeeDialogOpen, setDeleteFeeDialogOpen] = useState(false);
+  const [feeToDelete, setFeeToDelete] = useState<Fee | null>(null);
+
   // Queries
   const { data: summary, isLoading: summaryLoading } = useFinanceSummary();
   const { data: feesData, isLoading: feesLoading } = useFees({
@@ -747,6 +751,7 @@ export default function Finanzas() {
   const createPayment = useCreatePayment();
   const createTransaction = useCreateTransaction();
   const deleteTransaction = useDeleteTransaction();
+  const deleteFee = useDeleteFee();
 
   const fees = feesData?.fees || [];
   const transactions = transactionsData?.transactions || [];
@@ -860,6 +865,21 @@ export default function Finanzas() {
       });
       setDeleteDialogOpen(false);
       setTransactionToDelete(null);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const handleDeleteFee = async () => {
+    if (!feeToDelete) return;
+    try {
+      await deleteFee.mutateAsync(feeToDelete.id);
+      toast({
+        title: "Eliminado",
+        description: "La cuota ha sido eliminada exitosamente",
+      });
+      setDeleteFeeDialogOpen(false);
+      setFeeToDelete(null);
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
@@ -1071,6 +1091,7 @@ export default function Finanzas() {
                     <TableHead className="font-semibold text-center">Vencimiento</TableHead>
                     <TableHead className="font-semibold text-center">Estado</TableHead>
                     <TableHead className="w-[100px]"></TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1084,7 +1105,7 @@ export default function Finanzas() {
                     ))
                   ) : fees.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-12">
+                      <TableCell colSpan={9} className="text-center py-12">
                         <Wallet className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                         <p className="text-muted-foreground">No hay cuotas registradas</p>
                       </TableCell>
@@ -1137,6 +1158,36 @@ export default function Finanzas() {
                                 Registrar Pago
                               </Button>
                             )}
+                          </TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  disabled={fee.status === 'PAID' || fee.status === 'PARTIAL'}
+                                  onClick={() => {
+                                    if (fee.payments && fee.payments.length > 0) {
+                                      toast({
+                                        title: "No se puede eliminar",
+                                        description: "Esta cuota tiene pagos registrados",
+                                        variant: "destructive"
+                                      });
+                                      return;
+                                    }
+                                    setFeeToDelete(fee);
+                                    setDeleteFeeDialogOpen(true);
+                                  }}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Eliminar
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                         </TableRow>
                       );
@@ -1432,6 +1483,38 @@ export default function Finanzas() {
               <AlertDialogAction
                 className="bg-destructive hover:bg-destructive/90"
                 onClick={handleDeleteTransaction}
+              >
+                Eliminar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Delete Fee AlertDialog */}
+        <AlertDialog open={deleteFeeDialogOpen} onOpenChange={setDeleteFeeDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar cuota?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta accion no se puede deshacer.
+                {feeToDelete && (
+                  <div className="mt-3 p-3 bg-muted/30 rounded-lg text-sm">
+                    <p className="font-medium">{feeToDelete.student?.name}</p>
+                    <p className="text-muted-foreground">
+                      {feeToDelete.feeType?.name}: {formatCurrency(feeToDelete.amount)}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Vence: {new Date(feeToDelete.dueDate).toLocaleDateString("es-CO")}
+                    </p>
+                  </div>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive hover:bg-destructive/90"
+                onClick={handleDeleteFee}
               >
                 Eliminar
               </AlertDialogAction>

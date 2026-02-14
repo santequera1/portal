@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getFees, createFee, createPayment, getPayments, getFinanceSummary, getFeeTypes, createFeeType, deleteFeeType } from '../controllers/fee.controller';
+import { getFees, createFee, deleteFee, createPayment, getPayments, getFinanceSummary, getFeeTypes, createFeeType, deleteFeeType } from '../controllers/fee.controller';
 import { authenticate, requireRole } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { createFeeSchema, createPaymentSchema, createFeeTypeSchema } from '../schemas/fee.schema';
@@ -8,6 +8,7 @@ const router = Router();
 
 router.get('/', authenticate, getFees);
 router.post('/', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'), validate(createFeeSchema), createFee);
+router.delete('/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'), deleteFee);
 
 router.get('/payments', authenticate, getPayments);
 router.post('/payments', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'), validate(createPaymentSchema), createPayment);

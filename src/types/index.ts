@@ -182,6 +182,8 @@ export interface Fee {
   amount: number;
   dueDate: string;
   status: FeeStatus;
+  studentPaymentPlanId?: number;
+  installmentNumber?: number;
   student?: { id: number; name: string; admissionNo: string; class: ClassInfo; section: SectionInfo };
   feeType?: FeeType;
   payments?: Payment[];
@@ -204,6 +206,38 @@ export interface Payment {
   date: string;
   method: string;
   reference?: string;
+}
+
+export type PaymentFrequency = 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY' | 'CUSTOM';
+
+export interface PaymentPlan {
+  id: number;
+  name: string;
+  description?: string;
+  enrollmentFee: number;
+  tuitionAmount: number;
+  frequency: PaymentFrequency;
+  installments: number;
+  materialsCharge: number;
+  uniformCharge: number;
+  transportCharge: number;
+  discountPercent: number;
+  startDate?: string;
+  endDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StudentPaymentPlan {
+  id: number;
+  studentId: number;
+  paymentPlanId: number;
+  customTuition?: number;
+  customDiscount?: number;
+  active: boolean;
+  startDate: string;
+  endDate?: string;
+  paymentPlan: PaymentPlan;
 }
 
 export interface Transaction {

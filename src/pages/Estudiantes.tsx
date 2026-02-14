@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { useForm } from "react-hook-form";
+import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -218,6 +219,7 @@ function TableSkeleton() {
 export default function Estudiantes() {
   const { toast } = useToast();
   const { selectedOrgId } = useOrganization();
+  const navigate = useNavigate();
 
   // ---- Filter / pagination state ----
   const [search, setSearch] = useState("");
@@ -726,7 +728,7 @@ export default function Estudiantes() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => { setProfileStudent(student); setProfileOpen(true); }}>
+                              <DropdownMenuItem onClick={() => navigate(`/estudiantes/${student.id}`)}>
                                 <Eye className="mr-2 h-4 w-4" />
                                 Ver Perfil
                               </DropdownMenuItem>

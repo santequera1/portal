@@ -92,3 +92,14 @@ export function useDeleteFeeType() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['fee-types'] }),
   });
 }
+
+export function useDeleteFee() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.delete(`/fees/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fees'] });
+      qc.invalidateQueries({ queryKey: ['finance-summary'] });
+    },
+  });
+}

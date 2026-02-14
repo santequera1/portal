@@ -203,6 +203,7 @@ model Student {
   fees         Fee[]
   payments     Payment[]
   marks        Mark[]
+  paymentPlans StudentPaymentPlan[]
 }
 
 model StaffMember {
@@ -279,15 +280,69 @@ model FeeGroup {
   session AcademicSession @relation(fields: [sessionId], references: [id])
 }
 
-model Fee {
-  id        Int      @id @default(autoincrement())
-  studentId Int
-  feeTypeId Int
-  amount    Float
-  dueDate   DateTime
-  status    String   @default("PENDING")
+model PaymentPlan {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+
+  // Pricing
+  enrollmentFee   Float  @default(0)
+  tuitionAmount   Float
+  frequency       String // WEEKLY, BIWEEKLY, MONTHLY, QUARTERLY, YEARLY, CUSTOM
+  installments    Int
+
+  // Additional charges
+  materialsCharge  Float @default(0)
+  uniformCharge    Float @default(0)
+  transportCharge  Float @default(0)
+
+  // Discounts
+  discountPercent Float @default(0)
+
+  // Dates
+  startDate DateTime?
+  endDate   DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  studentPlans StudentPaymentPlan[]
+}
+
+model StudentPaymentPlan {
+  id            Int     @id @default(autoincrement())
+  studentId     Int
+  paymentPlanId Int
+
+  // Override values (if student has custom pricing)
+  customTuition  Float?
+  customDiscount Float?
+
+  // Status
+  active    Boolean  @default(true)
+  startDate DateTime @default(now())
+  endDate   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student     Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  paymentPlan PaymentPlan @relation(fields: [paymentPlanId], references: [id])
+
+  @@unique([studentId, paymentPlanId, active])
+}
+
+model Fee {
+  id                   Int      @id @default(autoincrement())
+  studentId            Int
+  feeTypeId            Int
+  amount               Float
+  dueDate              DateTime
+  status               String   @default("PENDING")
+  studentPaymentPlanId Int?
+  installmentNumber    Int?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   student  Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   feeType  FeeType   @relation(fields: [feeTypeId], references: [id])

@@ -210,3 +210,32 @@ export async function deleteFeeType(req: AuthRequest, res: Response) {
     res.status(500).json({ error: 'Error al eliminar tipo de cuota' });
   }
 }
+
+export async function deleteFee(req: AuthRequest, res: Response) {
+  try {
+    const { id } = req.params;
+
+    // Verificar que la cuota existe y obtener info
+    const fee = await prisma.fee.findUnique({
+      where: { id: parseInt(id) },
+      include: { payments: true },
+    });
+
+    if (!fee) {
+      return res.status(404).json({ error: 'Cuota no encontrada' });
+    }
+
+    // Advertencia si tiene pagos
+    if (fee.payments.length > 0) {
+      return res.status(400).json({
+        error: 'No se puede eliminar una cuota con pagos registrados. Elimine los pagos primero.'
+      });
+    }
+
+    await prisma.fee.delete({ where: { id: parseInt(id) } });
+    res.json({ message: 'Cuota eliminada exitosamente' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error al eliminar cuota' });
+  }
+}
