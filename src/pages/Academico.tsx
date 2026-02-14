@@ -64,6 +64,7 @@ import {
   useUpdateStaff,
   useDeleteStaff,
 } from "@/hooks/useStaff";
+import { useStudents } from "@/hooks/useStudents";
 import {
   Plus,
   Trash2,
@@ -78,8 +79,114 @@ import {
   Edit,
   Search,
   Loader2,
+  LayoutGrid,
+  List,
+  Table as TableIcon,
 } from "lucide-react";
-import type { AcademicSession, ClassInfo, SubjectInfo, StaffMember } from "@/types";
+import type { AcademicSession, ClassInfo, SubjectInfo, StaffMember, Student } from "@/types";
+
+// Component to display students in different view modes
+function ClassStudentsView({ classId, viewMode }: { classId: number; viewMode: 'grid' | 'list' | 'table' }) {
+  const { data: studentsData } = useStudents({ classId });
+  const students = studentsData?.students || [];
+
+  if (students.length === 0) {
+    return <p className="text-sm text-muted-foreground">No hay estudiantes en este curso</p>;
+  }
+
+  // Grid view (cards)
+  if (viewMode === 'grid') {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {students.map((student: Student) => (
+          <div key={student.id} className="bg-muted/30 rounded-lg p-3 border border-border hover:bg-muted/50 transition-colors">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <p className="font-medium text-sm">{student.name} {student.lastName}</p>
+                <p className="text-xs text-muted-foreground">{student.admissionNo}</p>
+              </div>
+              <Badge variant="outline" className="text-xs">
+                {student.section?.name || 'Sin sección'}
+              </Badge>
+            </div>
+            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+              <span>{student.gender}</span>
+              <span>•</span>
+              <span className={student.status === 'active' ? 'text-success' : 'text-muted-foreground'}>
+                {student.status === 'active' ? 'Activo' : 'Inactivo'}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // List view (compact)
+  if (viewMode === 'list') {
+    return (
+      <div className="space-y-2">
+        {students.map((student: Student) => (
+          <div key={student.id} className="flex items-center justify-between p-2 bg-muted/30 rounded-md hover:bg-muted/50 transition-colors">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">
+                {student.name.charAt(0)}{student.lastName?.charAt(0) || ''}
+              </div>
+              <div>
+                <p className="text-sm font-medium">{student.name} {student.lastName}</p>
+                <p className="text-xs text-muted-foreground">{student.admissionNo}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-xs">
+                {student.section?.name || 'Sin sección'}
+              </Badge>
+              <Badge variant={student.status === 'active' ? 'default' : 'secondary'} className="text-xs">
+                {student.status === 'active' ? 'Activo' : 'Inactivo'}
+              </Badge>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Table view (full details)
+  return (
+    <div className="border border-border rounded-md overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/50">
+            <TableHead className="font-semibold">N° Matrícula</TableHead>
+            <TableHead className="font-semibold">Nombre</TableHead>
+            <TableHead className="font-semibold">Sección</TableHead>
+            <TableHead className="font-semibold">Género</TableHead>
+            <TableHead className="font-semibold">Estado</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {students.map((student: Student, index: number) => (
+            <TableRow key={student.id} className={index % 2 === 0 ? "" : "bg-muted/30"}>
+              <TableCell className="font-mono text-sm">{student.admissionNo}</TableCell>
+              <TableCell className="font-medium">{student.name} {student.lastName}</TableCell>
+              <TableCell>
+                <Badge variant="outline" className="text-xs">
+                  {student.section?.name || 'Sin sección'}
+                </Badge>
+              </TableCell>
+              <TableCell className="text-sm">{student.gender}</TableCell>
+              <TableCell>
+                <Badge variant={student.status === 'active' ? 'default' : 'secondary'} className="text-xs">
+                  {student.status === 'active' ? 'Activo' : 'Inactivo'}
+                </Badge>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
 
 export default function Academico() {
   const { toast } = useToast();
@@ -94,6 +201,7 @@ export default function Academico() {
   const [sectionDialog, setSectionDialog] = useState(false);
   const [sectionForm, setSectionForm] = useState({ name: "", classId: 0 });
   const [expandedClasses, setExpandedClasses] = useState<Set<number>>(new Set());
+  const [studentsViewMode, setStudentsViewMode] = useState<'grid' | 'list' | 'table'>('grid');
 
   // Assign subject to class state
   const [assignSubjectDialog, setAssignSubjectDialog] = useState(false);
@@ -447,9 +555,35 @@ export default function Academico() {
 
           {/* ===================== CURSOS TAB (Collapsible Cards) ===================== */}
           <TabsContent value="classes" className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <h3 className="text-lg font-heading font-semibold">Cursos y Secciones</h3>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
+                <div className="flex gap-1 border border-border rounded-md p-1">
+                  <Button
+                    variant={studentsViewMode === 'grid' ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-8 px-2"
+                    onClick={() => setStudentsViewMode('grid')}
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant={studentsViewMode === 'list' ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-8 px-2"
+                    onClick={() => setStudentsViewMode('list')}
+                  >
+                    <List className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant={studentsViewMode === 'table' ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-8 px-2"
+                    onClick={() => setStudentsViewMode('table')}
+                  >
+                    <TableIcon className="w-4 h-4" />
+                  </Button>
+                </div>
                 <Button variant="outline" onClick={() => setSectionDialog(true)}>
                   <Plus className="w-4 h-4 mr-2" />
                   Nueva Seccion
@@ -611,6 +745,12 @@ export default function Academico() {
                                     )}
                                   </div>
                                 </div>
+
+                                {/* Students Section */}
+                                <div>
+                                  <p className="text-sm font-medium text-muted-foreground mb-2">Estudiantes</p>
+                                  <ClassStudentsView classId={cls.id} viewMode={studentsViewMode} />
+                                </div>
                               </div>
                             )}
                           </div>
@@ -750,6 +890,12 @@ export default function Academico() {
                                       <span className="text-sm text-muted-foreground">Sin materias asignadas</span>
                                     )}
                                   </div>
+                                </div>
+
+                                {/* Students Section */}
+                                <div>
+                                  <p className="text-sm font-medium text-muted-foreground mb-2">Estudiantes</p>
+                                  <ClassStudentsView classId={cls.id} viewMode={studentsViewMode} />
                                 </div>
                               </div>
                             )}
