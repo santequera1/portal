@@ -55,8 +55,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { useFees, useFinanceSummary, useCreatePayment, useDeleteFee } from "@/hooks/useFees";
+import { useFees, useFinanceSummary, useCreatePayment, useDeleteFee, useCreateFee, useFeeTypes } from "@/hooks/useFees";
 import { useTransactions, useCreateTransaction, useDeleteTransaction } from "@/hooks/useTransactions";
+import { useStudents } from "@/hooks/useStudents";
 import { useSearch } from "@/hooks/useSearch";
 import {
   CreditCard,
@@ -737,6 +738,15 @@ export default function Finanzas() {
   const [deleteFeeDialogOpen, setDeleteFeeDialogOpen] = useState(false);
   const [feeToDelete, setFeeToDelete] = useState<Fee | null>(null);
 
+  // Create fee state
+  const [createFeeDialogOpen, setCreateFeeDialogOpen] = useState(false);
+  const [newFeeForm, setNewFeeForm] = useState({
+    studentId: "",
+    feeTypeId: "",
+    amount: "",
+    dueDate: new Date().toISOString().split("T")[0],
+  });
+
   // Queries
   const { data: summary, isLoading: summaryLoading } = useFinanceSummary();
   const { data: feesData, isLoading: feesLoading } = useFees({
@@ -752,9 +762,15 @@ export default function Finanzas() {
   const createTransaction = useCreateTransaction();
   const deleteTransaction = useDeleteTransaction();
   const deleteFee = useDeleteFee();
+  const createFee = useCreateFee();
 
   const fees = feesData?.fees || [];
   const transactions = transactionsData?.transactions || [];
+
+  // Additional queries for create fee dialog
+  const { data: studentsData } = useStudents();
+  const { data: feeTypes } = useFeeTypes();
+  const students = studentsData?.students || [];
 
   // --- Fee payment handlers ---
   const openPaymentDialog = (fee: Fee) => {
@@ -880,6 +896,31 @@ export default function Finanzas() {
       });
       setDeleteFeeDialogOpen(false);
       setFeeToDelete(null);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const handleCreateFee = async () => {
+    if (!newFeeForm.studentId || !newFeeForm.feeTypeId || !newFeeForm.amount) {
+      toast({ title: "Error", description: "Todos los campos son requeridos", variant: "destructive" });
+      return;
+    }
+    try {
+      await createFee.mutateAsync({
+        studentId: parseInt(newFeeForm.studentId),
+        feeTypeId: parseInt(newFeeForm.feeTypeId),
+        amount: parseFloat(newFeeForm.amount),
+        dueDate: newFeeForm.dueDate,
+      });
+      toast({ title: "Creado", description: "La cuota ha sido creada exitosamente" });
+      setCreateFeeDialogOpen(false);
+      setNewFeeForm({
+        studentId: "",
+        feeTypeId: "",
+        amount: "",
+        dueDate: new Date().toISOString().split("T")[0],
+      });
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
@@ -1060,7 +1101,7 @@ export default function Finanzas() {
           {/* Fees Tab */}
           <TabsContent value="fees" className="space-y-4">
             <div className="bg-card rounded-xl border border-border p-4 shadow-card">
-              <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
                 <Select
                   value={feeStatusFilter || "all"}
                   onValueChange={(val) => setFeeStatusFilter(val === "all" ? "" : val)}
@@ -1076,6 +1117,10 @@ export default function Finanzas() {
                     <SelectItem value="OVERDUE">Vencido</SelectItem>
                   </SelectContent>
                 </Select>
+                <Button onClick={() => setCreateFeeDialogOpen(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Nueva Cuota
+                </Button>
               </div>
             </div>
 
@@ -1521,6 +1566,84 @@ export default function Finanzas() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Create Fee Dialog */}
+        <Dialog open={createFeeDialogOpen} onOpenChange={setCreateFeeDialogOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Crear Nueva Cuota</DialogTitle>
+              <DialogDescription>
+                Registra una nueva cuota para un estudiante
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Estudiante *</label>
+                <Select
+                  value={newFeeForm.studentId}
+                  onValueChange={(val) => setNewFeeForm({ ...newFeeForm, studentId: val })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar estudiante" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {students.map((student) => (
+                      <SelectItem key={student.id} value={String(student.id)}>
+                        {student.name} {student.lastName} - {student.admissionNo}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Tipo de Cuota *</label>
+                <Select
+                  value={newFeeForm.feeTypeId}
+                  onValueChange={(val) => setNewFeeForm({ ...newFeeForm, feeTypeId: val })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {feeTypes?.map((type) => (
+                      <SelectItem key={type.id} value={String(type.id)}>
+                        {type.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Monto *</label>
+                <Input
+                  type="number"
+                  placeholder="0"
+                  value={newFeeForm.amount}
+                  onChange={(e) => setNewFeeForm({ ...newFeeForm, amount: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Fecha de Vencimiento *</label>
+                <Input
+                  type="date"
+                  value={newFeeForm.dueDate}
+                  onChange={(e) => setNewFeeForm({ ...newFeeForm, dueDate: e.target.value })}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCreateFeeDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleCreateFee} disabled={createFee.isPending}>
+                {createFee.isPending ? "Creando..." : "Crear Cuota"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
   );
