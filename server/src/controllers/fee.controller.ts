@@ -126,7 +126,7 @@ export async function getFinanceSummary(req: AuthRequest, res: Response) {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
-    const [monthlyIncome, monthlyExpense, pendingFees, overdueFees] = await Promise.all([
+    const [monthlyIncome, monthlyExpense] = await Promise.all([
       prisma.transaction.aggregate({
         where: { type: 'INCOME', date: { gte: startOfMonth, lte: endOfMonth } },
         _sum: { amount: true },
@@ -135,9 +135,28 @@ export async function getFinanceSummary(req: AuthRequest, res: Response) {
         where: { type: 'EXPENSE', date: { gte: startOfMonth, lte: endOfMonth } },
         _sum: { amount: true },
       }),
-      prisma.fee.count({ where: { status: 'PENDING' } }),
-      prisma.fee.count({ where: { status: 'OVERDUE' } }),
     ]);
+
+    // Calculate pending and overdue amounts
+    const pendingFeesData = await prisma.fee.findMany({
+      where: { status: 'PENDING' },
+      include: { payments: true },
+    });
+
+    const overdueFeesData = await prisma.fee.findMany({
+      where: { status: 'OVERDUE' },
+      include: { payments: true },
+    });
+
+    const pendingFees = pendingFeesData.reduce((sum, fee) => {
+      const totalPaid = fee.payments.reduce((s, p) => s + p.amount, 0);
+      return sum + (fee.amount - totalPaid);
+    }, 0);
+
+    const overdueFees = overdueFeesData.reduce((sum, fee) => {
+      const totalPaid = fee.payments.reduce((s, p) => s + p.amount, 0);
+      return sum + (fee.amount - totalPaid);
+    }, 0);
 
     // Previous month for growth calculation
     const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);

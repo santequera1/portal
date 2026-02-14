@@ -58,3 +58,29 @@ export function useDeleteStudent() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['students'] }),
   });
 }
+
+export function useAddStudentBalance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, amount, description }: { id: number; amount: number; description?: string }) =>
+      api.post(`/students/${id}/balance`, { amount, description }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['students'] });
+      qc.invalidateQueries({ queryKey: ['fees'] });
+      qc.invalidateQueries({ queryKey: ['finance-summary'] });
+    },
+  });
+}
+
+export function usePayFeeWithBalance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ feeId, studentId, useBalance }: { feeId: number; studentId: number; useBalance: number }) =>
+      api.post(`/students/pay-with-balance`, { feeId, studentId, useBalance }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['students'] });
+      qc.invalidateQueries({ queryKey: ['fees'] });
+      qc.invalidateQueries({ queryKey: ['finance-summary'] });
+    },
+  });
+}

@@ -75,6 +75,7 @@ export interface Student {
   sectionId: number;
   organizationId?: number;
   sedeId?: number;
+  balance?: number;
   enrollmentDate: string;
   exalumno?: boolean;
   fechaSalida?: string;

@@ -125,3 +125,120 @@ export async function deleteStudent(req: AuthRequest, res: Response) {
     res.status(500).json({ error: 'Error al eliminar estudiante' });
   }
 }
+
+export async function addStudentBalance(req: AuthRequest, res: Response) {
+  try {
+    const { id } = req.params;
+    const { amount, description } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: 'El monto debe ser mayor a 0' });
+    }
+
+    const student = await prisma.student.findUnique({
+      where: { id: parseInt(id) },
+      select: { id: true, name: true, balance: true, organizationId: true },
+    });
+
+    if (!student) {
+      return res.status(404).json({ error: 'Estudiante no encontrado' });
+    }
+
+    const updated = await prisma.student.update({
+      where: { id: parseInt(id) },
+      data: { balance: student.balance + amount },
+    });
+
+    // Crear transacción de ingreso
+    await prisma.transaction.create({
+      data: {
+        type: 'INCOME',
+        description: `Abono a saldo - ${student.name}${description ? `: ${description}` : ''}`,
+        amount,
+        category: 'Abonos',
+        status: 'completed',
+        organizationId: student.organizationId || undefined,
+      },
+    });
+
+    res.json({
+      message: 'Abono registrado exitosamente',
+      student: updated,
+      previousBalance: student.balance,
+      newBalance: updated.balance,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error al registrar abono' });
+  }
+}
+
+export async function payFeeWithBalance(req: AuthRequest, res: Response) {
+  try {
+    const { feeId, studentId, useBalance } = req.body;
+
+    if (!useBalance || useBalance <= 0) {
+      return res.status(400).json({ error: 'El monto debe ser mayor a 0' });
+    }
+
+    const [fee, student] = await Promise.all([
+      prisma.fee.findUnique({
+        where: { id: feeId },
+        include: { payments: true },
+      }),
+      prisma.student.findUnique({
+        where: { id: studentId },
+        select: { balance: true, name: true },
+      }),
+    ]);
+
+    if (!fee || !student) {
+      return res.status(404).json({ error: 'Cuota o estudiante no encontrado' });
+    }
+
+    const totalPaid = fee.payments.reduce((sum, p) => sum + p.amount, 0);
+    const feeBalance = fee.amount - totalPaid;
+
+    if (useBalance > feeBalance) {
+      return res.status(400).json({ error: `El monto excede el saldo pendiente ($${feeBalance})` });
+    }
+
+    if (useBalance > student.balance) {
+      return res.status(400).json({ error: `Saldo insuficiente ($${student.balance})` });
+    }
+
+    // Descontar del saldo
+    await prisma.student.update({
+      where: { id: studentId },
+      data: { balance: student.balance - useBalance },
+    });
+
+    // Crear pago
+    const payment = await prisma.payment.create({
+      data: {
+        feeId,
+        studentId,
+        amount: useBalance,
+        method: 'BALANCE',
+        reference: 'Pago con saldo',
+      },
+    });
+
+    // Actualizar estado de cuota
+    const newTotalPaid = totalPaid + useBalance;
+    const newStatus = newTotalPaid >= fee.amount ? 'PAID' : 'PARTIAL';
+    await prisma.fee.update({
+      where: { id: feeId },
+      data: { status: newStatus },
+    });
+
+    res.status(201).json({
+      message: 'Pago realizado con saldo',
+      payment,
+      remainingBalance: student.balance - useBalance,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error al procesar pago' });
+  }
+}

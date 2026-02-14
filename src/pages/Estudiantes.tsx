@@ -73,7 +73,7 @@ import {
   Loader2,
 } from "lucide-react";
 
-import { useStudents, useCreateStudent, useUpdateStudent, useDeleteStudent } from "@/hooks/useStudents";
+import { useStudents, useCreateStudent, useUpdateStudent, useDeleteStudent, useAddStudentBalance } from "@/hooks/useStudents";
 import { useClasses } from "@/hooks/useClasses";
 import { useSedes } from "@/hooks/useSedes";
 import { useToast } from "@/hooks/use-toast";
@@ -1580,6 +1580,19 @@ export default function Estudiantes() {
                         <p className="font-medium">{profileStudent.bloodGroup}</p>
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* Saldo */}
+              {profileStudent.balance !== undefined && profileStudent.balance > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Finanzas</h4>
+                  <div className="p-3 rounded-lg bg-success/10 border border-success/20">
+                    <p className="text-xs text-muted-foreground">Saldo Disponible</p>
+                    <p className="font-mono font-bold text-success text-lg">
+                      ${profileStudent.balance.toLocaleString("es-CO", { maximumFractionDigits: 0 })}
+                    </p>
                   </div>
                 </div>
               )}

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getStudents, getStudent, createStudent, updateStudent, deleteStudent } from '../controllers/student.controller';
+import { getStudents, getStudent, createStudent, updateStudent, deleteStudent, addStudentBalance, payFeeWithBalance } from '../controllers/student.controller';
 import { authenticate, requireRole } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { createStudentSchema, updateStudentSchema } from '../schemas/student.schema';
@@ -11,5 +11,7 @@ router.get('/:id', authenticate, getStudent);
 router.post('/', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), validate(createStudentSchema), createStudent);
 router.put('/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), validate(updateStudentSchema), updateStudent);
 router.delete('/:id', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), deleteStudent);
+router.post('/:id/balance', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'), addStudentBalance);
+router.post('/pay-with-balance', authenticate, requireRole('SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'), payFeeWithBalance);
 
 export { router as studentRouter };

@@ -185,6 +185,7 @@ model Student {
   sectionId        Int
   organizationId   Int?
   sedeId           Int?
+  balance          Float     @default(0)
   enrollmentDate   DateTime  @default(now())
   exalumno         Boolean   @default(false)
   fechaSalida      DateTime?
