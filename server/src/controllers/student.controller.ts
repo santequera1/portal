@@ -117,7 +117,7 @@ export async function createStudent(req: AuthRequest, res: Response) {
 
       return res.status(400).json({
         error: message,
-        detail: `Verifica que classId=${data.classId}, sectionId=${data.sectionId}${data.organizationId ? `, organizationId=${data.organizationId}` : ''}${data.sedeId ? `, sedeId=${data.sedeId}` : ''} existan en la base de datos`
+        detail: `Verifica que classId=${req.body.classId}, sectionId=${req.body.sectionId}${req.body.organizationId ? `, organizationId=${req.body.organizationId}` : ''}${req.body.sedeId ? `, sedeId=${req.body.sedeId}` : ''} existan en la base de datos`
       });
     }
 
