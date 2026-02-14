@@ -97,8 +97,30 @@ export async function createStudent(req: AuthRequest, res: Response) {
     });
 
     res.status(201).json(student);
-  } catch (error) {
-    console.error(error);
+  } catch (error: any) {
+    console.error('Error al crear estudiante:', error);
+
+    // Handle Prisma foreign key constraint errors
+    if (error.code === 'P2003') {
+      const field = error.meta?.field_name;
+      let message = 'Error: Referencia inválida';
+
+      if (field?.includes('class')) {
+        message = 'La clase seleccionada no existe';
+      } else if (field?.includes('section')) {
+        message = 'La sección seleccionada no existe';
+      } else if (field?.includes('organization')) {
+        message = 'La organización seleccionada no existe';
+      } else if (field?.includes('sede')) {
+        message = 'La sede seleccionada no existe';
+      }
+
+      return res.status(400).json({
+        error: message,
+        detail: `Verifica que classId=${data.classId}, sectionId=${data.sectionId}${data.organizationId ? `, organizationId=${data.organizationId}` : ''}${data.sedeId ? `, sedeId=${data.sedeId}` : ''} existan en la base de datos`
+      });
+    }
+
     res.status(500).json({ error: 'Error al crear estudiante' });
   }
 }
