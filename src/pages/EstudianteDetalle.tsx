@@ -1,13 +1,34 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useToast } from '@/hooks/use-toast';
 import { useStudent } from '@/hooks/useStudents';
 import { useFees } from '@/hooks/useFees';
-import { useStudentPlan } from '@/hooks/usePaymentPlans';
-import { ArrowLeft, Pencil } from 'lucide-react';
+import { useStudentPlan, usePaymentPlans, useAssignPlanToStudent } from '@/hooks/usePaymentPlans';
+import { ArrowLeft, Pencil, Banknote, Loader2, Calendar, DollarSign, Percent, AlertCircle } from 'lucide-react';
+import type { PaymentFrequency } from '@/types';
 import {
   Table,
   TableBody,
@@ -20,12 +41,82 @@ import {
 export default function EstudianteDetalle() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   const { data: student, isLoading } = useStudent(id ? parseInt(id) : null);
   const { data: feesData } = useFees({ studentId: id ? parseInt(id) : undefined });
   const { data: studentPlan } = useStudentPlan(id ? parseInt(id) : undefined);
+  const { data: paymentPlans } = usePaymentPlans();
+  const assignPlanMutation = useAssignPlanToStudent();
 
   const fees = feesData?.fees || [];
+
+  // Assignment dialog state
+  const [assignPlanDialog, setAssignPlanDialog] = useState(false);
+  const [assignForm, setAssignForm] = useState({
+    paymentPlanId: 0,
+    customTuition: 0,
+    customDiscount: 0,
+    startDate: new Date().toISOString().split('T')[0],
+  });
+
+  // Helper to calculate preview
+  const calculatePreview = () => {
+    const selectedPlan = paymentPlans?.find((p) => p.id === assignForm.paymentPlanId);
+    if (!selectedPlan) return null;
+
+    const baseTuition = assignForm.customTuition > 0 ? assignForm.customTuition : selectedPlan.tuitionAmount;
+    const discountPercent = assignForm.customDiscount > 0 ? assignForm.customDiscount : selectedPlan.discountPercent;
+    const discountAmount = (baseTuition * discountPercent) / 100;
+    const finalTuition = baseTuition - discountAmount;
+
+    const totalCharges = selectedPlan.materialsCharge + selectedPlan.uniformCharge + selectedPlan.transportCharge;
+    const totalTuition = finalTuition * selectedPlan.installments;
+    const totalCost = selectedPlan.enrollmentFee + totalTuition + totalCharges;
+
+    return {
+      finalTuition,
+      totalCost,
+      discountAmount: discountAmount * selectedPlan.installments,
+      installments: selectedPlan.installments,
+      enrollmentFee: selectedPlan.enrollmentFee,
+      totalCharges,
+    };
+  };
+
+  // Handler to assign plan
+  const handleAssignPlan = async () => {
+    if (!id || assignForm.paymentPlanId === 0) {
+      toast({ title: "Error", description: "Selecciona un plan de pago", variant: "destructive" });
+      return;
+    }
+
+    try {
+      await assignPlanMutation.mutateAsync({
+        studentId: parseInt(id),
+        paymentPlanId: assignForm.paymentPlanId,
+        customTuition: assignForm.customTuition > 0 ? assignForm.customTuition : undefined,
+        customDiscount: assignForm.customDiscount > 0 ? assignForm.customDiscount : undefined,
+        startDate: new Date(assignForm.startDate),
+      });
+
+      const preview = calculatePreview();
+      toast({
+        title: "Plan Asignado",
+        description: `Se generaron ${preview?.installments || 0} cuotas exitosamente`,
+      });
+
+      setAssignPlanDialog(false);
+      setAssignForm({
+        paymentPlanId: 0,
+        customTuition: 0,
+        customDiscount: 0,
+        startDate: new Date().toISOString().split('T')[0],
+      });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
 
   if (isLoading) {
     return (
@@ -74,6 +165,14 @@ export default function EstudianteDetalle() {
             </div>
           </div>
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setAssignPlanDialog(true)}
+              className="bg-primary/10 text-primary hover:bg-primary/20"
+            >
+              <Banknote className="w-4 h-4 mr-2" />
+              {studentPlan ? "Cambiar Plan" : "Asignar Plan"}
+            </Button>
             <Button variant="outline">
               <Pencil className="w-4 h-4 mr-2" />
               Editar
@@ -177,26 +276,69 @@ export default function EstudianteDetalle() {
             </div>
 
             {/* Payment Plan Info */}
-            {studentPlan && (
-              <div className="bg-card rounded-xl border border-border p-4 shadow-card">
-                <div className="flex items-center justify-between">
+            {studentPlan ? (
+              <div className="bg-card rounded-xl border border-success/20 p-6 shadow-card">
+                <div className="flex items-start justify-between mb-4">
                   <div>
-                    <h3 className="font-semibold">Plan de Pago Activo</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {studentPlan.paymentPlan.name}
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-semibold text-lg">{studentPlan.paymentPlan.name}</h3>
+                      <Badge className="bg-success/10 text-success">Activo</Badge>
+                    </div>
+                    {studentPlan.paymentPlan.description && (
+                      <p className="text-sm text-muted-foreground">
+                        {studentPlan.paymentPlan.description}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAssignPlanDialog(true)}
+                  >
+                    <Banknote className="w-4 h-4 mr-2" />
+                    Cambiar
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Matrícula</p>
+                    <p className="font-mono font-semibold">
+                      ${studentPlan.paymentPlan.enrollmentFee.toLocaleString()}
                     </p>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm text-muted-foreground">Cuota</p>
-                    <p className="font-mono font-bold">
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Cuota</p>
+                    <p className="font-mono font-semibold text-primary">
                       ${(studentPlan.customTuition || studentPlan.paymentPlan.tuitionAmount).toLocaleString()}
                     </p>
-                    <Badge variant="secondary" className="mt-1">
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Frecuencia</p>
+                    <Badge variant="secondary">
                       {getFrequencyLabel(studentPlan.paymentPlan.frequency)}
                     </Badge>
                   </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Cuotas</p>
+                    <p className="font-mono font-semibold">
+                      {studentPlan.paymentPlan.installments}
+                    </p>
+                  </div>
                 </div>
               </div>
+            ) : (
+              <Alert className="border-warning/50 bg-warning/10">
+                <AlertCircle className="h-4 w-4 text-warning" />
+                <AlertDescription>
+                  Este estudiante no tiene un plan de pago asignado.{" "}
+                  <button
+                    onClick={() => setAssignPlanDialog(true)}
+                    className="font-semibold underline hover:text-primary"
+                  >
+                    Asignar plan ahora
+                  </button>
+                </AlertDescription>
+              </Alert>
             )}
 
             {/* Fees Table */}
@@ -275,6 +417,197 @@ export default function EstudianteDetalle() {
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* Assign Payment Plan Dialog */}
+        <Dialog open={assignPlanDialog} onOpenChange={setAssignPlanDialog}>
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                {studentPlan ? "Cambiar Plan de Pago" : "Asignar Plan de Pago"}
+              </DialogTitle>
+              <DialogDescription>
+                {studentPlan
+                  ? "Selecciona un nuevo plan. El plan anterior será desactivado automáticamente."
+                  : "Selecciona un plan de pago y configura los parámetros para el estudiante."}
+              </DialogDescription>
+            </DialogHeader>
+
+            {/* Warning if student already has a plan */}
+            {studentPlan && (
+              <Alert className="border-warning/50 bg-warning/10">
+                <AlertCircle className="h-4 w-4 text-warning" />
+                <AlertDescription>
+                  El estudiante tiene actualmente el plan <strong>{studentPlan.paymentPlan.name}</strong>.
+                  Al asignar un nuevo plan, el anterior será desactivado y se generarán nuevas cuotas.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="space-y-4 py-4">
+              {/* Plan Selection */}
+              <div className="space-y-2">
+                <Label>Plan de Pago *</Label>
+                <Select
+                  value={assignForm.paymentPlanId ? String(assignForm.paymentPlanId) : ""}
+                  onValueChange={(val) =>
+                    setAssignForm({ ...assignForm, paymentPlanId: Number(val) })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar plan" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {paymentPlans?.map((plan) => (
+                      <SelectItem key={plan.id} value={String(plan.id)}>
+                        {plan.name} - ${plan.tuitionAmount.toLocaleString()} (
+                        {getFrequencyLabel(plan.frequency)})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Custom Tuition (Optional) */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <DollarSign className="w-4 h-4 text-muted-foreground" />
+                  Cuota Personalizada (Opcional)
+                </Label>
+                <Input
+                  type="number"
+                  placeholder="Dejar en 0 para usar la cuota del plan"
+                  value={assignForm.customTuition || ""}
+                  onChange={(e) =>
+                    setAssignForm({ ...assignForm, customTuition: Number(e.target.value) })
+                  }
+                />
+              </div>
+
+              {/* Custom Discount (Optional) */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Percent className="w-4 h-4 text-muted-foreground" />
+                  Descuento Personalizado % (Opcional)
+                </Label>
+                <Input
+                  type="number"
+                  placeholder="Dejar en 0 para usar el descuento del plan"
+                  min="0"
+                  max="100"
+                  value={assignForm.customDiscount || ""}
+                  onChange={(e) =>
+                    setAssignForm({ ...assignForm, customDiscount: Number(e.target.value) })
+                  }
+                />
+              </div>
+
+              {/* Start Date */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-muted-foreground" />
+                  Fecha de Inicio *
+                </Label>
+                <Input
+                  type="date"
+                  value={assignForm.startDate}
+                  onChange={(e) =>
+                    setAssignForm({ ...assignForm, startDate: e.target.value })
+                  }
+                />
+              </div>
+
+              {/* Preview Section */}
+              {assignForm.paymentPlanId > 0 && (() => {
+                const preview = calculatePreview();
+                if (!preview) return null;
+
+                return (
+                  <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
+                    <h4 className="font-semibold flex items-center gap-2">
+                      <Banknote className="w-4 h-4" />
+                      Vista Previa de Costos
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div className="space-y-1">
+                        <p className="text-muted-foreground">Matrícula</p>
+                        <p className="font-mono font-semibold">
+                          ${preview.enrollmentFee.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-muted-foreground">Cuota Final</p>
+                        <p className="font-mono font-semibold text-primary">
+                          ${preview.finalTuition.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-muted-foreground">Número de Cuotas</p>
+                        <p className="font-mono font-semibold">{preview.installments}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-muted-foreground">Otros Cargos</p>
+                        <p className="font-mono font-semibold">
+                          ${preview.totalCharges.toLocaleString()}
+                        </p>
+                      </div>
+                      {preview.discountAmount > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-muted-foreground">Descuento Total</p>
+                          <p className="font-mono font-semibold text-success">
+                            -${preview.discountAmount.toLocaleString()}
+                          </p>
+                        </div>
+                      )}
+                      <div className="space-y-1 col-span-2 pt-2 border-t border-border">
+                        <p className="text-muted-foreground">Costo Total</p>
+                        <p className="font-mono font-bold text-lg">
+                          ${preview.totalCost.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground pt-2 border-t border-border">
+                      Se generarán{" "}
+                      <span className="font-semibold">{preview.installments + 1}</span> cuotas:
+                      1 de matrícula + {preview.installments} de mensualidad
+                      {preview.totalCharges > 0 && " + cargos adicionales"}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setAssignPlanDialog(false);
+                  setAssignForm({
+                    paymentPlanId: 0,
+                    customTuition: 0,
+                    customDiscount: 0,
+                    startDate: new Date().toISOString().split('T')[0],
+                  });
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                className="bg-primary hover:bg-primary/90"
+                onClick={handleAssignPlan}
+                disabled={assignForm.paymentPlanId === 0 || assignPlanMutation.isPending}
+              >
+                {assignPlanMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Asignando...
+                  </>
+                ) : (
+                  <>{studentPlan ? "Cambiar Plan" : "Asignar Plan"}</>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
   );

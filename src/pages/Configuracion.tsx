@@ -48,6 +48,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useFeeTypes, useCreateFeeType, useDeleteFeeType } from "@/hooks/useFees";
+import { usePaymentPlans, useCreatePaymentPlan, useUpdatePaymentPlan, useDeletePaymentPlan } from "@/hooks/usePaymentPlans";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/services/api";
 import {
@@ -67,8 +68,11 @@ import {
   Save,
   X,
   MapPin,
+  Banknote,
 } from "lucide-react";
-import type { User, UserRole, Sede, Organization } from "@/types";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import type { User, UserRole, Sede, Organization, PaymentPlan, PaymentFrequency } from "@/types";
 
 const ROLES: { value: UserRole; label: string }[] = [
   { value: "SUPER_ADMIN", label: "Super Admin" },
@@ -132,6 +136,33 @@ export default function Configuracion() {
     organizationId: 0,
   });
 
+  // Payment Plan state
+  const [planDialog, setPlanDialog] = useState(false);
+  const [editPlanDialog, setEditPlanDialog] = useState(false);
+  const [deletePlanDialog, setDeletePlanDialog] = useState(false);
+  const [planToDelete, setPlanToDelete] = useState<PaymentPlan | null>(null);
+  const [planForm, setPlanForm] = useState({
+    name: "",
+    description: "",
+    enrollmentFee: 0,
+    tuitionAmount: 0,
+    frequency: "MONTHLY" as PaymentFrequency,
+    installments: 10,
+    materialsCharge: 0,
+    uniformCharge: 0,
+    transportCharge: 0,
+    discountPercent: 0,
+  });
+  const [editingPlanId, setEditingPlanId] = useState<number | null>(null);
+
+  const FREQUENCIES: { value: PaymentFrequency; label: string }[] = [
+    { value: "WEEKLY", label: "Semanal" },
+    { value: "BIWEEKLY", label: "Quincenal" },
+    { value: "MONTHLY", label: "Mensual" },
+    { value: "QUARTERLY", label: "Trimestral" },
+    { value: "YEARLY", label: "Anual" },
+  ];
+
   // Queries
   const { data: configData, isLoading: configLoading } = useQuery({
     queryKey: ["config"],
@@ -156,6 +187,8 @@ export default function Configuracion() {
     queryKey: ["organizations"],
     queryFn: () => api.get<Organization[]>("/organizations"),
   });
+
+  const { data: paymentPlans, isLoading: plansLoading } = usePaymentPlans();
 
   // Mutations
   const updateConfig = useMutation({
@@ -195,6 +228,10 @@ export default function Configuracion() {
       queryClient.invalidateQueries({ queryKey: ["sedes"] });
     },
   });
+
+  const createPlan = useCreatePaymentPlan();
+  const updatePlan = useUpdatePaymentPlan();
+  const deletePlan = useDeletePaymentPlan();
 
   // Sync config data into local form state
   useEffect(() => {
@@ -350,6 +387,92 @@ export default function Configuracion() {
     }
   };
 
+  // Payment Plan handlers
+  const handleCreatePlan = async () => {
+    if (!planForm.name.trim()) {
+      toast({ title: "Error", description: "El nombre es requerido", variant: "destructive" });
+      return;
+    }
+    if (planForm.tuitionAmount <= 0) {
+      toast({ title: "Error", description: "La cuota debe ser mayor a 0", variant: "destructive" });
+      return;
+    }
+    try {
+      await createPlan.mutateAsync(planForm);
+      toast({ title: "Creado", description: "El plan de pago ha sido creado" });
+      setPlanDialog(false);
+      resetPlanForm();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const handleOpenEditPlan = (plan: PaymentPlan) => {
+    setPlanForm({
+      name: plan.name,
+      description: plan.description || "",
+      enrollmentFee: plan.enrollmentFee,
+      tuitionAmount: plan.tuitionAmount,
+      frequency: plan.frequency,
+      installments: plan.installments,
+      materialsCharge: plan.materialsCharge,
+      uniformCharge: plan.uniformCharge,
+      transportCharge: plan.transportCharge,
+      discountPercent: plan.discountPercent,
+    });
+    setEditingPlanId(plan.id);
+    setEditPlanDialog(true);
+  };
+
+  const handleSaveEditPlan = async () => {
+    if (!editingPlanId) return;
+    if (!planForm.name.trim() || planForm.tuitionAmount <= 0) {
+      toast({ title: "Error", description: "Nombre y cuota son requeridos", variant: "destructive" });
+      return;
+    }
+    try {
+      await updatePlan.mutateAsync({ id: editingPlanId, data: planForm });
+      toast({ title: "Actualizado", description: "El plan ha sido actualizado" });
+      setEditPlanDialog(false);
+      resetPlanForm();
+      setEditingPlanId(null);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const handleOpenDeletePlan = (plan: PaymentPlan) => {
+    setPlanToDelete(plan);
+    setDeletePlanDialog(true);
+  };
+
+  const handleConfirmDeletePlan = async () => {
+    if (!planToDelete) return;
+    try {
+      await deletePlan.mutateAsync(planToDelete.id);
+      toast({ title: "Eliminado", description: "El plan ha sido eliminado" });
+      setDeletePlanDialog(false);
+      setPlanToDelete(null);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const resetPlanForm = () => {
+    setPlanForm({
+      name: "",
+      description: "",
+      enrollmentFee: 0,
+      tuitionAmount: 0,
+      frequency: "MONTHLY",
+      installments: 10,
+      materialsCharge: 0,
+      uniformCharge: 0,
+      transportCharge: 0,
+      discountPercent: 0,
+    });
+  };
+
   // Resolved config values for display mode
   const displayConfig = {
     schoolName: generalForm.schoolName,
@@ -393,6 +516,10 @@ export default function Configuracion() {
               <TabsTrigger value="sedes" className="text-xs sm:text-sm">
                 <MapPin className="w-4 h-4 mr-1 sm:mr-2" />
                 Sedes
+              </TabsTrigger>
+              <TabsTrigger value="payment-plans" className="text-xs sm:text-sm">
+                <Banknote className="w-4 h-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">Planes de </span>Pago
               </TabsTrigger>
             </TabsList>
           </div>
@@ -802,6 +929,110 @@ export default function Configuracion() {
               </Table>
             </div>
           </TabsContent>
+
+          {/* Payment Plans Tab */}
+          <TabsContent value="payment-plans" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-heading font-semibold">Planes de Pago</h3>
+              <Button className="bg-primary hover:bg-primary/90" onClick={() => setPlanDialog(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Nuevo Plan
+              </Button>
+            </div>
+
+            <div className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="font-semibold">Nombre</TableHead>
+                    <TableHead className="font-semibold">Matrícula</TableHead>
+                    <TableHead className="font-semibold">Cuota</TableHead>
+                    <TableHead className="font-semibold">Frecuencia</TableHead>
+                    <TableHead className="font-semibold text-center">Cuotas</TableHead>
+                    <TableHead className="font-semibold text-center">Descuento</TableHead>
+                    <TableHead className="w-[50px]">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {plansLoading ? (
+                    Array.from({ length: 4 }).map((_, i) => (
+                      <TableRow key={i}>
+                        {Array.from({ length: 7 }).map((_, j) => (
+                          <TableCell key={j}><Skeleton className="h-5 w-full" /></TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : !paymentPlans || paymentPlans.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-12">
+                        <Banknote className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                        <p className="text-muted-foreground">No hay planes de pago registrados</p>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    paymentPlans.map((plan, index) => {
+                      const frequencyLabel = FREQUENCIES.find((f) => f.value === plan.frequency)?.label || plan.frequency;
+                      return (
+                        <TableRow key={plan.id} className={index % 2 === 0 ? "" : "bg-muted/30"}>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">{plan.name}</p>
+                              {plan.description && (
+                                <p className="text-xs text-muted-foreground">{plan.description}</p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-mono">
+                            ${plan.enrollmentFee.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="font-mono">
+                            ${plan.tuitionAmount.toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">{frequencyLabel}</Badge>
+                          </TableCell>
+                          <TableCell className="text-center font-mono">
+                            {plan.installments}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {plan.discountPercent > 0 ? (
+                              <Badge className="bg-success/10 text-success">
+                                {plan.discountPercent}%
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleOpenEditPlan(plan)}>
+                                  <Edit className="w-4 h-4 mr-2" />
+                                  Editar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() => handleOpenDeletePlan(plan)}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Eliminar
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </TabsContent>
         </Tabs>
 
         {/* New Fee Type Dialog */}
@@ -1076,6 +1307,308 @@ export default function Configuracion() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* New Payment Plan Dialog */}
+        <Dialog open={planDialog} onOpenChange={setPlanDialog}>
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Nuevo Plan de Pago</DialogTitle>
+              <DialogDescription>Crea un nuevo plan de pago para asignar a estudiantes</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Nombre *</Label>
+                  <Input
+                    placeholder="Plan Básico 2024"
+                    value={planForm.name}
+                    onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Descripción</Label>
+                  <Textarea
+                    placeholder="Descripción del plan de pago"
+                    value={planForm.description}
+                    onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
+                    rows={2}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Matrícula *</Label>
+                  <Input
+                    type="number"
+                    placeholder="200000"
+                    value={planForm.enrollmentFee || ""}
+                    onChange={(e) => setPlanForm({ ...planForm, enrollmentFee: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Cuota *</Label>
+                  <Input
+                    type="number"
+                    placeholder="150000"
+                    value={planForm.tuitionAmount || ""}
+                    onChange={(e) => setPlanForm({ ...planForm, tuitionAmount: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Frecuencia *</Label>
+                  <Select
+                    value={planForm.frequency}
+                    onValueChange={(val) => setPlanForm({ ...planForm, frequency: val as PaymentFrequency })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar frecuencia" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FREQUENCIES.map((freq) => (
+                        <SelectItem key={freq.value} value={freq.value}>
+                          {freq.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Número de Cuotas *</Label>
+                  <Input
+                    type="number"
+                    placeholder="10"
+                    value={planForm.installments || ""}
+                    onChange={(e) => setPlanForm({ ...planForm, installments: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Materiales</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={planForm.materialsCharge || ""}
+                    onChange={(e) => setPlanForm({ ...planForm, materialsCharge: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Uniforme</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={planForm.uniformCharge || ""}
+                    onChange={(e) => setPlanForm({ ...planForm, uniformCharge: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Transporte</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={planForm.transportCharge || ""}
+                    onChange={(e) => setPlanForm({ ...planForm, transportCharge: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Descuento %</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    min="0"
+                    max="100"
+                    value={planForm.discountPercent || ""}
+                    onChange={(e) => setPlanForm({ ...planForm, discountPercent: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setPlanDialog(false); resetPlanForm(); }}>
+                Cancelar
+              </Button>
+              <Button className="bg-primary hover:bg-primary/90" onClick={handleCreatePlan} disabled={createPlan.isPending}>
+                {createPlan.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Creando...
+                  </>
+                ) : (
+                  "Crear Plan"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Payment Plan Dialog */}
+        <Dialog open={editPlanDialog} onOpenChange={(open) => {
+          setEditPlanDialog(open);
+          if (!open) { resetPlanForm(); setEditingPlanId(null); }
+        }}>
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Editar Plan de Pago</DialogTitle>
+              <DialogDescription>Modifica la información del plan de pago</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Nombre *</Label>
+                  <Input
+                    placeholder="Plan Básico 2024"
+                    value={planForm.name}
+                    onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Descripción</Label>
+                  <Textarea
+                    placeholder="Descripción del plan de pago"
+                    value={planForm.description}
+                    onChange={(e) => setPlanForm({ ...planForm, description: e.target.value })}
+                    rows={2}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Matrícula *</Label>
+                  <Input
+                    type="number"
+                    placeholder="200000"
+                    value={planForm.enrollmentFee || ""}
+                    onChange={(e) => setPlanForm({ ...planForm, enrollmentFee: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Cuota *</Label>
+                  <Input
+                    type="number"
+                    placeholder="150000"
+                    value={planForm.tuitionAmount || ""}
+                    onChange={(e) => setPlanForm({ ...planForm, tuitionAmount: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Frecuencia *</Label>
+                  <Select
+                    value={planForm.frequency}
+                    onValueChange={(val) => setPlanForm({ ...planForm, frequency: val as PaymentFrequency })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar frecuencia" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FREQUENCIES.map((freq) => (
+                        <SelectItem key={freq.value} value={freq.value}>
+                          {freq.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Número de Cuotas *</Label>
+                  <Input
+                    type="number"
+                    placeholder="10"
+                    value={planForm.installments || ""}
+                    onChange={(e) => setPlanForm({ ...planForm, installments: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Materiales</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={planForm.materialsCharge || ""}
+                    onChange={(e) => setPlanForm({ ...planForm, materialsCharge: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Uniforme</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={planForm.uniformCharge || ""}
+                    onChange={(e) => setPlanForm({ ...planForm, uniformCharge: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Transporte</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={planForm.transportCharge || ""}
+                    onChange={(e) => setPlanForm({ ...planForm, transportCharge: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Descuento %</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    min="0"
+                    max="100"
+                    value={planForm.discountPercent || ""}
+                    onChange={(e) => setPlanForm({ ...planForm, discountPercent: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => {
+                setEditPlanDialog(false);
+                resetPlanForm();
+                setEditingPlanId(null);
+              }}>
+                Cancelar
+              </Button>
+              <Button
+                className="bg-primary hover:bg-primary/90"
+                onClick={handleSaveEditPlan}
+                disabled={updatePlan.isPending}
+              >
+                {updatePlan.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Guardando...
+                  </>
+                ) : (
+                  "Guardar Cambios"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Payment Plan AlertDialog */}
+        <AlertDialog open={deletePlanDialog} onOpenChange={(open) => {
+          setDeletePlanDialog(open);
+          if (!open) setPlanToDelete(null);
+        }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Eliminar Plan de Pago</AlertDialogTitle>
+              <AlertDialogDescription>
+                ¿Está seguro de que desea eliminar el plan{" "}
+                <span className="font-semibold">{planToDelete?.name}</span>? Esta acción no se puede
+                deshacer y fallará si hay estudiantes asignados a este plan.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive hover:bg-destructive/90"
+                onClick={handleConfirmDeletePlan}
+              >
+                {deletePlan.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Eliminando...
+                  </>
+                ) : (
+                  "Eliminar"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </MainLayout>
   );
