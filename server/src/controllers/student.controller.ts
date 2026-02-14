@@ -64,6 +64,11 @@ export async function getStudent(req: AuthRequest, res: Response) {
 
 export async function createStudent(req: AuthRequest, res: Response) {
   try {
+    // Validate required fields
+    if (!req.body.classId || !req.body.sectionId) {
+      return res.status(400).json({ error: 'Clase y sección son campos requeridos' });
+    }
+
     const admissionNo = await generateAdmissionNo();
     const data = { ...req.body, admissionNo };
 
@@ -73,9 +78,18 @@ export async function createStudent(req: AuthRequest, res: Response) {
     data.fechaSalida = data.fechaSalida ? new Date(data.fechaSalida) : null;
 
     // Strip empty strings for optional fields (Prisma expects null, not "")
+    // IMPORTANT: Don't convert classId and sectionId to null - they are required
     for (const key of Object.keys(data)) {
-      if (data[key] === '') data[key] = null;
+      if (data[key] === '' && key !== 'classId' && key !== 'sectionId') {
+        data[key] = null;
+      }
     }
+
+    // Ensure classId and sectionId are integers
+    data.classId = parseInt(data.classId);
+    data.sectionId = parseInt(data.sectionId);
+    if (data.organizationId) data.organizationId = parseInt(data.organizationId);
+    if (data.sedeId) data.sedeId = parseInt(data.sedeId);
 
     const student = await prisma.student.create({
       data,
