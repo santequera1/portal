@@ -470,7 +470,7 @@ function StepPaymentDetails({
   onChange: (updates: Partial<WizardData>) => void;
   onContinue: () => void;
 }) {
-  const isValid = data.paymentMethod && data.amount > 0;
+  const isValid = data.paymentMethod && data.amount >= 0;
 
   return (
     <div className="space-y-4">
@@ -535,9 +535,11 @@ function StepPaymentDetails({
           <Input
             type="number"
             placeholder="0"
+            min="0"
             value={data.amount || ""}
             onChange={(e) => onChange({ amount: Number(e.target.value) })}
           />
+          <p className="text-xs text-muted-foreground">Puedes usar $0 para registrar becas o subsidios</p>
         </div>
 
         {/* Reference */}

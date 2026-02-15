@@ -283,6 +283,11 @@ export default function EstudianteDetalle() {
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="font-semibold text-lg">{studentPlan.paymentPlan.name}</h3>
                       <Badge className="bg-success/10 text-success">Activo</Badge>
+                      {studentPlan.customDiscount && studentPlan.customDiscount > 0 && (
+                        <Badge className="bg-warning/10 text-warning">
+                          {studentPlan.customDiscount}% Descuento
+                        </Badge>
+                      )}
                     </div>
                     {studentPlan.paymentPlan.description && (
                       <p className="text-sm text-muted-foreground">
@@ -299,7 +304,9 @@ export default function EstudianteDetalle() {
                     Cambiar
                   </Button>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+                {/* Plan Details Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">Matrícula</p>
                     <p className="font-mono font-semibold">
@@ -319,12 +326,63 @@ export default function EstudianteDetalle() {
                     </Badge>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">Cuotas</p>
+                    <p className="text-xs text-muted-foreground">Número de Cuotas</p>
                     <p className="font-mono font-semibold">
                       {studentPlan.paymentPlan.installments}
                     </p>
                   </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">Total del Plan</p>
+                    <p className="font-mono font-semibold text-lg">
+                      ${(() => {
+                        const tuition = studentPlan.customTuition || studentPlan.paymentPlan.tuitionAmount;
+                        const discount = studentPlan.customDiscount || studentPlan.paymentPlan.discountPercent;
+                        const discountAmount = (tuition * discount) / 100;
+                        const finalTuition = tuition - discountAmount;
+                        const totalTuition = finalTuition * studentPlan.paymentPlan.installments;
+                        const totalCharges = studentPlan.paymentPlan.materialsCharge +
+                                           studentPlan.paymentPlan.uniformCharge +
+                                           studentPlan.paymentPlan.transportCharge;
+                        return (studentPlan.paymentPlan.enrollmentFee + totalTuition + totalCharges).toLocaleString();
+                      })()}
+                    </p>
+                  </div>
                 </div>
+
+                {/* Additional Charges (if any) */}
+                {(studentPlan.paymentPlan.materialsCharge > 0 ||
+                  studentPlan.paymentPlan.uniformCharge > 0 ||
+                  studentPlan.paymentPlan.transportCharge > 0) && (
+                  <div className="border-t border-border pt-4">
+                    <p className="text-xs text-muted-foreground mb-2">Cargos Adicionales</p>
+                    <div className="grid grid-cols-3 gap-4">
+                      {studentPlan.paymentPlan.materialsCharge > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">Materiales</p>
+                          <p className="font-mono text-sm">
+                            ${studentPlan.paymentPlan.materialsCharge.toLocaleString()}
+                          </p>
+                        </div>
+                      )}
+                      {studentPlan.paymentPlan.uniformCharge > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">Uniforme</p>
+                          <p className="font-mono text-sm">
+                            ${studentPlan.paymentPlan.uniformCharge.toLocaleString()}
+                          </p>
+                        </div>
+                      )}
+                      {studentPlan.paymentPlan.transportCharge > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">Transporte</p>
+                          <p className="font-mono text-sm">
+                            ${studentPlan.paymentPlan.transportCharge.toLocaleString()}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <Alert className="border-warning/50 bg-warning/10">
