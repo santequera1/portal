@@ -63,10 +63,13 @@ export function usePayments(params?: { studentId?: number; feeId?: number }) {
   });
 }
 
-export function useFinanceSummary() {
+export function useFinanceSummary(organizationId?: number) {
+  const qs = new URLSearchParams();
+  if (organizationId) qs.set('organizationId', String(organizationId));
+
   return useQuery({
-    queryKey: ['finance-summary'],
-    queryFn: () => api.get<FinanceSummary>('/fees/summary'),
+    queryKey: ['finance-summary', organizationId],
+    queryFn: () => api.get<FinanceSummary>(`/fees/summary?${qs}`),
   });
 }
 

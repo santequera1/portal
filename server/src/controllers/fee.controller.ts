@@ -122,17 +122,23 @@ export async function getPayments(req: AuthRequest, res: Response) {
 
 export async function getFinanceSummary(req: AuthRequest, res: Response) {
   try {
+    const { organizationId } = req.query;
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
+    const transWhere: any = {};
+    if (organizationId) {
+      transWhere.organizationId = parseInt(organizationId as string);
+    }
+
     const [monthlyIncome, monthlyExpense] = await Promise.all([
       prisma.transaction.aggregate({
-        where: { type: 'INCOME', date: { gte: startOfMonth, lte: endOfMonth } },
+        where: { ...transWhere, type: 'INCOME', date: { gte: startOfMonth, lte: endOfMonth } },
         _sum: { amount: true },
       }),
       prisma.transaction.aggregate({
-        where: { type: 'EXPENSE', date: { gte: startOfMonth, lte: endOfMonth } },
+        where: { ...transWhere, type: 'EXPENSE', date: { gte: startOfMonth, lte: endOfMonth } },
         _sum: { amount: true },
       }),
     ]);
@@ -162,7 +168,7 @@ export async function getFinanceSummary(req: AuthRequest, res: Response) {
     const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const prevEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
     const prevIncome = await prisma.transaction.aggregate({
-      where: { type: 'INCOME', date: { gte: prevStart, lte: prevEnd } },
+      where: { ...transWhere, type: 'INCOME', date: { gte: prevStart, lte: prevEnd } },
       _sum: { amount: true },
     });
 

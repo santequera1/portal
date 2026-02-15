@@ -748,7 +748,7 @@ export default function Finanzas() {
   });
 
   // Queries
-  const { data: summary, isLoading: summaryLoading } = useFinanceSummary();
+  const { data: summary, isLoading: summaryLoading } = useFinanceSummary(selectedOrgId || undefined);
   const { data: feesData, isLoading: feesLoading } = useFees({
     status: feeStatusFilter || undefined,
   });
