@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const createTransactionSchema = z.object({
   type: z.enum(['INCOME', 'EXPENSE']),
   description: z.string().min(1, 'Descripcion requerida'),
-  amount: z.number().positive('El monto debe ser positivo'),
+  amount: z.number().nonnegative('El monto no puede ser negativo'),
   date: z.string().optional(),
   category: z.string().min(1, 'Categoria requerida'),
   status: z.string().optional(),
