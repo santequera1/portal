@@ -22,7 +22,16 @@ ssh ubuntu@51.195.109.26 << 'ENDSSH'
     echo "🔄 Regenerando cliente de Prisma..."
     npx prisma generate
 
-    echo "🔨 Compilando código TypeScript..."
+    echo "🔨 Compilando código TypeScript del backend..."
+    npm run build
+
+    echo "🎨 Volviendo al directorio raíz para compilar frontend..."
+    cd /var/www/portal
+
+    echo "📦 Instalando dependencias del frontend..."
+    npm install
+
+    echo "🏗️  Compilando frontend React con Vite..."
     npm run build
 
     echo "♻️  Reiniciando servidor con PM2..."
