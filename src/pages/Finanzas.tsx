@@ -1807,7 +1807,7 @@ export default function Finanzas() {
             setNewFeeForm({ studentId: "", feeTypeId: "", amount: "", dueDate: new Date().toISOString().split("T")[0], markAsPaid: true, paymentMethod: "CASH", reference: "", customDescription: "" });
           }
         }}>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{existingPendingFee ? "Registrar Pago" : "Nueva Cuota"}</DialogTitle>
               <DialogDescription>
