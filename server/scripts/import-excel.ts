@@ -4,32 +4,91 @@ import * as path from 'path';
 
 const prisma = new PrismaClient();
 
-// Class mapping for Minerva grades
-const minervaClassMap: Record<string, number> = {
-  '6°': 7,
-  '7°': 8,
-  '8°': 9,
-  '8° Y 9°': 9,
-  '8° y 9°': 9,
-  '9°': 10,
-  '10°': 11,
-  '10|°': 11,
-  '10° ': 11,
-  '11°': 12,
-};
+// These will be populated dynamically from the DB
+let minervaClassMap: Record<string, number> = {};
+let minervaClassSectionMap: Record<number, number> = {}; // classId -> sectionA id
+let fundisaludClassMap: Record<string, number> = {};
+let fundisaludClassSectionMap: Record<number, number> = {};
+let orgIds: Record<string, number> = {};
+let sedeIds: Record<string, number> = {};
+let feeTypeIds: Record<string, number> = {};
 
-// Class mapping for Fundisalud programs
-const fundisaludClassMap: Record<string, number> = {
-  'atencion integral a la primera infancia': 18,
-  'gestion administrativa': 16,
-  'administracion en salud': 22,
-  'seguridad ocupacional': 17,
-  'tecnico en sistema': 19,
-  'tecnico en sistemas': 19,
-  'auxiliar de enfermeria': 13,
-  'auxiliar de farmacia': 14,
-  'auxiliar en farmacia': 14,
-};
+async function loadMappings() {
+  // Load organizations
+  const orgs = await prisma.organization.findMany();
+  for (const o of orgs) {
+    if (o.name.toLowerCase().includes('minerva')) orgIds['minerva'] = o.id;
+    if (o.name.toLowerCase().includes('fundisalud')) orgIds['fundisalud'] = o.id;
+  }
+  console.log('Organizations:', orgIds);
+
+  // Load sedes
+  const sedes = await prisma.sede.findMany();
+  for (const s of sedes) {
+    if (s.organizationId === orgIds['minerva'] && !sedeIds['minerva']) sedeIds['minerva'] = s.id;
+    if (s.organizationId === orgIds['fundisalud'] && !sedeIds['fundisalud']) sedeIds['fundisalud'] = s.id;
+  }
+  console.log('Sedes:', sedeIds);
+
+  // Load fee types
+  const fts = await prisma.feeType.findMany();
+  for (const ft of fts) {
+    if (ft.name.toLowerCase().includes('matric')) feeTypeIds['matricula'] = ft.id;
+    if (ft.name.toLowerCase() === 'mensualidad') feeTypeIds['mensualidad'] = ft.id;
+  }
+  console.log('Fee types:', feeTypeIds);
+
+  // Load classes with sections
+  const classes = await prisma.class.findMany({ include: { sections: true } });
+  for (const c of classes) {
+    const sectionA = c.sections.find(s => s.name === 'A') || c.sections[0];
+    if (!sectionA) continue;
+
+    if (c.category !== 'TECNICA') {
+      // Minerva - map by grade name
+      minervaClassMap[c.name] = c.id;
+      minervaClassSectionMap[c.id] = sectionA.id;
+    } else {
+      // Fundisalud - map by program name (lowercase, normalized)
+      const key = c.name.toLowerCase()
+        .replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o').replace(/ú/g, 'u')
+        .replace(/ñ/g, 'n');
+      fundisaludClassMap[key] = c.id;
+      fundisaludClassSectionMap[c.id] = sectionA.id;
+    }
+  }
+  console.log('Minerva classes:', Object.keys(minervaClassMap).length);
+  console.log('Fundisalud classes:', Object.keys(fundisaludClassMap).length);
+}
+
+function findMinervaClassId(grado: string): number {
+  // Try exact match first
+  if (minervaClassMap[grado]) return minervaClassMap[grado];
+  // Try cleaned version
+  const cleaned = grado.replace(/\s+/g, '').replace(/\|/g, '');
+  for (const [name, id] of Object.entries(minervaClassMap)) {
+    if (name.replace(/\s+/g, '') === cleaned) return id;
+    if (cleaned.startsWith(name.replace('°', '').replace(/\s+/g, ''))) return id;
+  }
+  // Default to first class
+  const ids = Object.values(minervaClassMap);
+  return ids[0] || 1;
+}
+
+function findFundisaludClassId(programa: string): number {
+  const norm = programa.toLowerCase()
+    .replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o').replace(/ú/g, 'u')
+    .replace(/ñ/g, 'n');
+  // Try exact match
+  if (fundisaludClassMap[norm]) return fundisaludClassMap[norm];
+  // Try partial match
+  for (const [name, id] of Object.entries(fundisaludClassMap)) {
+    if (norm.includes(name) || name.includes(norm)) return id;
+  }
+  // Default to first fundisalud class
+  const ids = Object.values(fundisaludClassMap);
+  return ids[0] || 1;
+}
 
 function parseExcelDate(value: any): Date | null {
   if (!value) return null;
@@ -94,10 +153,9 @@ async function importMinerva(sheet: XLSX.WorkSheet) {
     const valorPension = Number(row[25]) || 0;
     const totalAnual = Number(row[26]) || 0;
 
-    // Map grade to class
-    const classId = minervaClassMap[grado] || minervaClassMap[grado.replace(/\s+/g, '')] || 9;
-    // Section A for all
-    const sectionId = (classId - 1) * 2 + 1; // Maps to section A of each class
+    // Map grade to class dynamically
+    const classId = findMinervaClassId(grado);
+    const sectionId = minervaClassSectionMap[classId] || Object.values(minervaClassSectionMap)[0] || 1;
 
     const admissionNo = generateAdmissionNo('MINERVA', i);
 
@@ -126,21 +184,19 @@ async function importMinerva(sheet: XLSX.WorkSheet) {
           address: direccion || null,
           classId,
           sectionId,
-          organizationId: 1, // Minerva
-          sedeId: 1, // Sede Olaya (Cartagena)
+          organizationId: orgIds['minerva'] || 1,
+          sedeId: sedeIds['minerva'] || 1,
           balance: 0,
           status: 'active',
         },
       });
 
-      // Create fees: 1 matrícula + monthly pensiones
-      // Matrícula - due Feb 1
       await prisma.fee.create({
         data: {
           studentId: student.id,
-          feeTypeId: 1, // Matricula
+          feeTypeId: feeTypeIds['matricula'] || 1,
           amount: valorMatricula,
-          dueDate: new Date(2026, 1, 1), // Feb 1, 2026
+          dueDate: new Date(2026, 1, 1),
           status: 'PENDING',
         },
       });
@@ -155,9 +211,9 @@ async function importMinerva(sheet: XLSX.WorkSheet) {
         await prisma.fee.create({
           data: {
             studentId: student.id,
-            feeTypeId: 2, // Mensualidad
+            feeTypeId: feeTypeIds['mensualidad'] || 2,
             amount: valorPension,
-            dueDate: new Date(2026, 1 + m, 1), // Feb, Mar, Apr...
+            dueDate: new Date(2026, 1 + m, 1),
             status: 'PENDING',
             installmentNumber: m + 1,
           },
@@ -202,23 +258,25 @@ async function importFundisalud(sheet: XLSX.WorkSheet) {
     const valorPension = Number(row[19]) || 0;
     const totalAnual = Number(row[20]) || 0;
 
-    // Map program to class
-    const classId = fundisaludClassMap[programa] || 13; // Default to Enfermeria
-    // Section A
-    const sectionId = (classId - 1) * 2 + 1;
+    // Map program to class dynamically
+    const classId = findFundisaludClassId(programa);
+    const sectionId = fundisaludClassSectionMap[classId] || Object.values(fundisaludClassSectionMap)[0] || 1;
 
     const admissionNo = generateAdmissionNo('FUNDISALUD', i);
+
+    // Capitalize words
+    const capitalize = (s: string) => s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 
     try {
       const student = await prisma.student.create({
         data: {
           admissionNo,
-          name: nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase(),
-          lastName: apellido.charAt(0).toUpperCase() + apellido.slice(1).toLowerCase(),
+          name: capitalize(nombre),
+          lastName: capitalize(apellido),
           dateOfBirth: fechaNac,
           gender: genero,
           bloodGroup: tipoSangre || null,
-          nationality: nacionalidad.charAt(0).toUpperCase() + nacionalidad.slice(1).toLowerCase(),
+          nationality: capitalize(nacionalidad),
           email: email || null,
           phone: telefono ? String(telefono) : null,
           tipoIdentificacion: tipoDoc ? tipoDoc.toUpperCase() : null,
@@ -229,25 +287,23 @@ async function importFundisalud(sheet: XLSX.WorkSheet) {
           address: direccion || null,
           classId,
           sectionId,
-          organizationId: 2, // Fundisalud
-          sedeId: 3, // Sede Olaya Fundisalud (Cartagena)
+          organizationId: orgIds['fundisalud'] || 2,
+          sedeId: sedeIds['fundisalud'] || 1,
           balance: 0,
           status: 'active',
         },
       });
 
-      // Matrícula fee
       await prisma.fee.create({
         data: {
           studentId: student.id,
-          feeTypeId: 1, // Matricula
+          feeTypeId: feeTypeIds['matricula'] || 1,
           amount: valorMatricula,
           dueDate: new Date(2026, 1, 1),
           status: 'PENDING',
         },
       });
 
-      // Monthly pensions
       const numMeses = totalAnual > 0 && valorPension > 0
         ? Math.round((totalAnual - valorMatricula) / valorPension)
         : 10;
@@ -256,7 +312,7 @@ async function importFundisalud(sheet: XLSX.WorkSheet) {
         await prisma.fee.create({
           data: {
             studentId: student.id,
-            feeTypeId: 2, // Mensualidad
+            feeTypeId: feeTypeIds['mensualidad'] || 2,
             amount: valorPension,
             dueDate: new Date(2026, 1 + m, 1),
             status: 'PENDING',
@@ -276,14 +332,15 @@ async function importFundisalud(sheet: XLSX.WorkSheet) {
 }
 
 async function main() {
+  // Load dynamic mappings from DB
+  await loadMappings();
+
   const excelPath = path.join(__dirname, '..', 'formato plataforma cartagena  fundisalud 2026.xlsx');
-  console.log('Reading Excel file:', excelPath);
+  console.log('\nReading Excel file:', excelPath);
 
   const wb = XLSX.readFile(excelPath);
   console.log('Sheets found:', wb.SheetNames);
 
-  // First, clean up existing seed students to avoid duplicates
-  // We'll delete students that were created by the seed (they have specific admission patterns)
   const existingCount = await prisma.student.count();
   console.log(`\nExisting students in DB: ${existingCount}`);
   console.log('Deleting existing students to reimport fresh...');
@@ -310,11 +367,11 @@ async function main() {
   // Summary
   const totalFees = await prisma.fee.count();
   const totalMatricula = await prisma.fee.aggregate({
-    where: { feeTypeId: 1 },
+    where: { feeTypeId: feeTypeIds['matricula'] || 1 },
     _sum: { amount: true },
   });
   const totalPensiones = await prisma.fee.aggregate({
-    where: { feeTypeId: 2 },
+    where: { feeTypeId: feeTypeIds['mensualidad'] || 2 },
     _sum: { amount: true },
   });
 
