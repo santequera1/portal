@@ -691,7 +691,12 @@ export default function Estudiantes() {
                                 {getInitials(student.name, student.lastName)}
                               </AvatarFallback>
                             </Avatar>
-                            <span className="font-medium">{fullName}</span>
+                            <button
+                              className="font-medium text-left text-primary hover:underline cursor-pointer"
+                              onClick={() => navigate(`/estudiantes/${student.id}`)}
+                            >
+                              {fullName}
+                            </button>
                           </div>
                         </TableCell>
 

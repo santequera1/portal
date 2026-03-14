@@ -125,11 +125,8 @@ export async function getStudentPlan(req: AuthRequest, res: Response) {
       }
     });
 
-    if (!studentPlan) {
-      return res.status(404).json({ error: 'El estudiante no tiene plan de pago activo' });
-    }
-
-    res.json(studentPlan);
+    // Return null instead of 404 to avoid console errors on frontend
+    res.json(studentPlan || null);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error al obtener plan del estudiante' });

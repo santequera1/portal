@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useOrganization } from "@/contexts/OrganizationContext";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Select,
   SelectContent,
@@ -59,6 +61,7 @@ import { useFees, useFinanceSummary, useCreatePayment, useDeleteFee, useCreateFe
 import { useTransactions, useCreateTransaction, useDeleteTransaction } from "@/hooks/useTransactions";
 import { useStudents } from "@/hooks/useStudents";
 import { useSearch } from "@/hooks/useSearch";
+import { api } from "@/services/api";
 import {
   CreditCard,
   Plus,
@@ -80,16 +83,27 @@ import {
   Search,
   Trash2,
   MoreVertical,
+  Printer,
+  Download,
+  Calendar,
+  Receipt as ReceiptIcon,
 } from "lucide-react";
+import html2canvas from "html2canvas-pro";
+import { jsPDF } from "jspdf";
 import type { Fee, Transaction, SearchResult } from "@/types";
 
 const formatCurrency = (value: number) => {
   return `$${value.toLocaleString("es-CO", { maximumFractionDigits: 0 })}`;
 };
 
+const getMethodLabel = (method: string) => {
+  const labels: Record<string, string> = { CASH: 'Efectivo', TRANSFER: 'Transferencia', CHECK: 'Cheque' };
+  return labels[method] || method;
+};
+
 const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
   PAID: { label: "Pagado", color: "bg-success/10 text-success", icon: CheckCircle2 },
-  PARTIAL: { label: "Parcial", color: "bg-warning/10 text-warning", icon: Clock },
+  PARTIAL: { label: "Parcial/Abono", color: "bg-warning/10 text-warning", icon: Clock },
   PENDING: { label: "Pendiente", color: "bg-secondary/10 text-secondary", icon: Clock },
   OVERDUE: { label: "Vencido", color: "bg-destructive/10 text-destructive", icon: AlertCircle },
 };
@@ -394,21 +408,34 @@ function StepConcept({
   customConcept,
   onCustomConceptChange,
   onCustomConceptSubmit,
+  personType,
+  feeTypes,
 }: {
-  onSelect: (concept: ConceptOption) => void;
+  onSelect: (concept: ConceptOption | string) => void;
   customConcept: string;
   onCustomConceptChange: (value: string) => void;
   onCustomConceptSubmit: () => void;
+  personType?: PersonType | null;
+  feeTypes?: { id: number; name: string }[];
 }) {
   const [showCustomInput, setShowCustomInput] = useState(false);
 
-  const concepts: { value: ConceptOption; label: string }[] = [
-    { value: "Matricula", label: "Matricula" },
-    { value: "Mensualidad", label: "Mensualidad" },
-    { value: "Nomina", label: "Nomina" },
-    { value: "Pago Proveedor", label: "Pago Proveedor" },
-    { value: "Otro", label: "Otro" },
-  ];
+  // For students: show fee types + Nómina, Pago Proveedor, Otro
+  // For others: show generic concepts
+  const isStudent = personType === "STUDENT";
+
+  const baseConcepts: { value: string; label: string }[] = isStudent
+    ? [
+        ...(feeTypes || []).map((ft) => ({ value: ft.name, label: ft.name })),
+        { value: "Otro", label: "Otro" },
+      ]
+    : [
+        { value: "Matricula", label: "Matricula" },
+        { value: "Mensualidad", label: "Mensualidad" },
+        { value: "Nomina", label: "Nomina" },
+        { value: "Pago Proveedor", label: "Pago Proveedor" },
+        { value: "Otro", label: "Otro" },
+      ];
 
   return (
     <div className="space-y-4">
@@ -416,8 +443,8 @@ function StepConcept({
       <p className="text-sm text-muted-foreground text-center">
         Selecciona la categoria de esta transaccion
       </p>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-6">
-        {concepts.map((c) => (
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-6 max-h-[45vh] overflow-y-auto">
+        {baseConcepts.map((c) => (
           <Card
             key={c.value}
             className="cursor-pointer hover:border-primary hover:shadow-md transition-all group"
@@ -425,11 +452,11 @@ function StepConcept({
               if (c.value === "Otro") {
                 setShowCustomInput(true);
               } else {
-                onSelect(c.value);
+                onSelect(c.value as ConceptOption);
               }
             }}
           >
-            <CardContent className="flex items-center justify-center py-5">
+            <CardContent className="flex items-center justify-center py-4">
               <span className="text-sm font-semibold text-center">{c.label}</span>
             </CardContent>
           </Card>
@@ -710,7 +737,10 @@ function StepSummary({
 // ==================== MAIN COMPONENT ====================
 export default function Finanzas() {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const { selectedOrgId } = useOrganization();
+  const { user } = useAuth();
+  const canDeleteFees = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'ACCOUNTANT';
 
   // Fee payment state
   const [paymentDialog, setPaymentDialog] = useState(false);
@@ -728,9 +758,14 @@ export default function Finanzas() {
 
   // Filter state
   const [feeStatusFilter, setFeeStatusFilter] = useState<string>("");
+  const [feeSearch, setFeeSearch] = useState<string>("");
   const [txTypeFilter, setTxTypeFilter] = useState<string>("");
   const [txFromDate, setTxFromDate] = useState<string>("");
   const [txToDate, setTxToDate] = useState<string>("");
+
+  // Receipt dialog state
+  const [receiptDialog, setReceiptDialog] = useState<any>(null);
+  const [receiptFee, setReceiptFee] = useState<any>(null);
 
   // Delete transaction state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -747,12 +782,21 @@ export default function Finanzas() {
     feeTypeId: "",
     amount: "",
     dueDate: new Date().toISOString().split("T")[0],
+    markAsPaid: true,
+    paymentMethod: "CASH" as "CASH" | "TRANSFER",
+    reference: "",
+    customDescription: "",
   });
+  const [customDescSuggestions, setCustomDescSuggestions] = useState<string[]>([]);
+  const [showCustomDescDropdown, setShowCustomDescDropdown] = useState(false);
+  const customDescRef = useRef<HTMLDivElement>(null);
 
   // Queries
   const { data: summary, isLoading: summaryLoading } = useFinanceSummary(selectedOrgId || undefined);
   const { data: feesData, isLoading: feesLoading } = useFees({
     status: feeStatusFilter || undefined,
+    organizationId: selectedOrgId || undefined,
+    search: feeSearch || undefined,
   });
   const { data: transactionsData, isLoading: transactionsLoading } = useTransactions({
     type: txTypeFilter || undefined,
@@ -770,9 +814,73 @@ export default function Finanzas() {
   const transactions = transactionsData?.transactions || [];
 
   // Additional queries for create fee dialog
-  const { data: studentsData } = useStudents();
+  const [studentSearch, setStudentSearch] = useState("");
+  const { data: studentsData } = useStudents({ search: studentSearch || undefined, limit: 10 });
   const { data: feeTypes } = useFeeTypes();
   const students = studentsData?.students || [];
+  const [selectedStudent, setSelectedStudent] = useState<any>(null);
+  const [showStudentDropdown, setShowStudentDropdown] = useState(false);
+  const studentSearchRef = useRef<HTMLDivElement>(null);
+
+  // Detect existing pending fee of the same type for this student
+  const existingPendingFee = (() => {
+    if (!selectedStudent || !newFeeForm.feeTypeId) return null;
+    const existingFees = selectedStudent.fees || [];
+    return existingFees.find((f: any) =>
+      String(f.feeTypeId) === newFeeForm.feeTypeId &&
+      (f.status === 'PENDING' || f.status === 'PARTIAL' || f.status === 'OVERDUE')
+    ) || null;
+  })();
+
+  // Detect if selected fee type is "Otro / Misceláneos"
+  const isOtroMiscelaneo = (() => {
+    if (!newFeeForm.feeTypeId || !feeTypes) return false;
+    const selected = feeTypes.find((t: any) => String(t.id) === newFeeForm.feeTypeId);
+    return selected?.name?.toLowerCase().includes("otro") || selected?.name?.toLowerCase().includes("miscel");
+  })();
+
+  // Auto-suggest amount based on student's existing fees
+  const suggestedAmount = (() => {
+    if (!selectedStudent || !newFeeForm.feeTypeId) return null;
+    const existingFees = selectedStudent.fees || [];
+    const matchingFee = existingFees.find((f: any) => String(f.feeTypeId) === newFeeForm.feeTypeId);
+    return matchingFee ? matchingFee.amount : null;
+  })();
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (studentSearchRef.current && !studentSearchRef.current.contains(e.target as Node)) {
+        setShowStudentDropdown(false);
+      }
+      if (customDescRef.current && !customDescRef.current.contains(e.target as Node)) {
+        setShowCustomDescDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Load custom description suggestions from previous transactions
+  useEffect(() => {
+    if (isOtroMiscelaneo) {
+      const loadSuggestions = async () => {
+        try {
+          const res = await api.get("/transactions?limit=200");
+          const txs = res.data?.transactions || [];
+          const descriptions = txs
+            .map((t: any) => t.description || "")
+            .filter((d: string) => d.includes("Otro") || d.includes("Miscel"))
+            .map((d: string) => d.replace(/^(Pago|Abono) de /, "").replace(/ - .*$/, ""))
+            .filter((d: string, i: number, arr: string[]) => arr.indexOf(d) === i && d.trim());
+          setCustomDescSuggestions(descriptions);
+        } catch {
+          setCustomDescSuggestions([]);
+        }
+      };
+      loadSuggestions();
+    }
+  }, [isOtroMiscelaneo]);
 
   // --- Fee payment handlers ---
   const openPaymentDialog = (fee: Fee) => {
@@ -904,24 +1012,69 @@ export default function Finanzas() {
   };
 
   const handleCreateFee = async () => {
-    if (!newFeeForm.studentId || !newFeeForm.feeTypeId || !newFeeForm.amount) {
+    if (!newFeeForm.studentId || !newFeeForm.amount) {
       toast({ title: "Error", description: "Todos los campos son requeridos", variant: "destructive" });
       return;
     }
+
+    if (isOtroMiscelaneo && !newFeeForm.customDescription.trim()) {
+      toast({ title: "Error", description: "Escribe la descripción del concepto", variant: "destructive" });
+      return;
+    }
+
     try {
-      await createFee.mutateAsync({
-        studentId: parseInt(newFeeForm.studentId),
-        feeTypeId: parseInt(newFeeForm.feeTypeId),
-        amount: parseFloat(newFeeForm.amount),
-        dueDate: newFeeForm.dueDate,
-      });
-      toast({ title: "Creado", description: "La cuota ha sido creada exitosamente" });
+      if (existingPendingFee) {
+        // Pay against existing fee instead of creating a new one
+        await createPayment.mutateAsync({
+          feeId: existingPendingFee.id,
+          studentId: parseInt(newFeeForm.studentId),
+          amount: parseFloat(newFeeForm.amount),
+          method: newFeeForm.paymentMethod,
+          reference: newFeeForm.reference || undefined,
+        });
+        toast({ title: "Pago registrado", description: "El abono se registró en la cuota existente" });
+      } else if (newFeeForm.feeTypeId) {
+        // Create new fee
+        const feeData: any = {
+          studentId: parseInt(newFeeForm.studentId),
+          feeTypeId: parseInt(newFeeForm.feeTypeId),
+          amount: parseFloat(newFeeForm.amount),
+          dueDate: newFeeForm.dueDate,
+        };
+        if (isOtroMiscelaneo && newFeeForm.customDescription.trim()) {
+          feeData.description = newFeeForm.customDescription.trim();
+        }
+        const fee = await createFee.mutateAsync(feeData);
+
+        if (newFeeForm.markAsPaid) {
+          await createPayment.mutateAsync({
+            feeId: fee.id,
+            studentId: parseInt(newFeeForm.studentId),
+            amount: parseFloat(newFeeForm.amount),
+            method: newFeeForm.paymentMethod,
+            reference: newFeeForm.reference || undefined,
+          });
+          toast({ title: "Registrado", description: "Cuota creada y pago registrado exitosamente" });
+        } else {
+          toast({ title: "Creado", description: "La cuota ha sido creada exitosamente" });
+        }
+      } else {
+        toast({ title: "Error", description: "Selecciona un tipo de cuota", variant: "destructive" });
+        return;
+      }
+
       setCreateFeeDialogOpen(false);
+      setSelectedStudent(null);
+      setStudentSearch("");
       setNewFeeForm({
         studentId: "",
         feeTypeId: "",
         amount: "",
         dueDate: new Date().toISOString().split("T")[0],
+        markAsPaid: true,
+        paymentMethod: "CASH",
+        reference: "",
+        customDescription: "",
       });
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -974,9 +1127,11 @@ export default function Finanzas() {
               setWizardStep(5);
             }}
             onSelect={(concept) => {
-              updateWizardData({ concept });
+              updateWizardData({ concept: concept as ConceptOption });
               setWizardStep(5);
             }}
+            personType={wizardData.personType}
+            feeTypes={feeTypes || []}
           />
         );
       case 5:
@@ -1104,21 +1259,32 @@ export default function Finanzas() {
           <TabsContent value="fees" className="space-y-4">
             <div className="bg-card rounded-xl border border-border p-4 shadow-card">
               <div className="flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
-                <Select
-                  value={feeStatusFilter || "all"}
-                  onValueChange={(val) => setFeeStatusFilter(val === "all" ? "" : val)}
-                >
-                  <SelectTrigger className="w-full md:w-[180px]">
-                    <SelectValue placeholder="Estado" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="PAID">Pagado</SelectItem>
-                    <SelectItem value="PARTIAL">Parcial</SelectItem>
-                    <SelectItem value="PENDING">Pendiente</SelectItem>
-                    <SelectItem value="OVERDUE">Vencido</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex flex-col sm:flex-row gap-3 flex-1">
+                  <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                    <Input
+                      placeholder="Buscar estudiante..."
+                      value={feeSearch}
+                      onChange={(e) => setFeeSearch(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                  <Select
+                    value={feeStatusFilter || "all"}
+                    onValueChange={(val) => setFeeStatusFilter(val === "all" ? "" : val)}
+                  >
+                    <SelectTrigger className="w-full sm:w-[180px]">
+                      <SelectValue placeholder="Estado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="PAID">Pagado</SelectItem>
+                      <SelectItem value="PARTIAL">Parcial/Abono</SelectItem>
+                      <SelectItem value="PENDING">Pendiente</SelectItem>
+                      <SelectItem value="OVERDUE">Vencido</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button onClick={() => setCreateFeeDialogOpen(true)}>
                   <Plus className="w-4 h-4 mr-2" />
                   Nueva Cuota
@@ -1131,7 +1297,8 @@ export default function Finanzas() {
                 <TableHeader>
                   <TableRow className="bg-muted/50">
                     <TableHead className="font-semibold">Estudiante</TableHead>
-                    <TableHead className="font-semibold">Curso</TableHead>
+                    <TableHead className="font-semibold">Programa</TableHead>
+                    <TableHead className="font-semibold">Concepto</TableHead>
                     <TableHead className="font-semibold text-right">Monto</TableHead>
                     <TableHead className="font-semibold text-right">Pagado</TableHead>
                     <TableHead className="font-semibold text-right">Pendiente</TableHead>
@@ -1145,14 +1312,14 @@ export default function Finanzas() {
                   {feesLoading ? (
                     Array.from({ length: 5 }).map((_, i) => (
                       <TableRow key={i}>
-                        {Array.from({ length: 8 }).map((_, j) => (
+                        {Array.from({ length: 9 }).map((_, j) => (
                           <TableCell key={j}><Skeleton className="h-5 w-full" /></TableCell>
                         ))}
                       </TableRow>
                     ))
                   ) : fees.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-12">
+                      <TableCell colSpan={10} className="text-center py-12">
                         <Wallet className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                         <p className="text-muted-foreground">No hay cuotas registradas</p>
                       </TableCell>
@@ -1169,10 +1336,31 @@ export default function Finanzas() {
                           className={`table-row-hover ${index % 2 === 0 ? "" : "bg-muted/30"}`}
                         >
                           <TableCell className="font-medium">
-                            {fee.student?.name || "-"}
+                            {fee.student?.id ? (
+                              <button
+                                className="text-left text-primary hover:underline cursor-pointer"
+                                onClick={() => navigate(`/estudiantes/${fee.student.id}`)}
+                              >
+                                {fee.student.name} {(fee.student as any).lastName || ""}
+                              </button>
+                            ) : (
+                              fee.student?.name || "-"
+                            )}
                           </TableCell>
                           <TableCell className="text-muted-foreground">
                             {fee.student?.class?.name || "-"} {fee.student?.section?.name || ""}
+                          </TableCell>
+                          <TableCell>
+                            {(fee as any).description ? (
+                              <>
+                                <span className="font-medium text-sm">{(fee as any).description}</span>
+                                <span className="block text-xs text-muted-foreground">{fee.feeType?.name}</span>
+                              </>
+                            ) : (
+                              <Badge variant="secondary" className="bg-muted">
+                                {fee.feeType?.name || "-"}
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell className="text-right font-mono">
                             {formatCurrency(fee.amount)}
@@ -1214,25 +1402,33 @@ export default function Finanzas() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  disabled={fee.status === 'PAID' || fee.status === 'PARTIAL'}
-                                  onClick={() => {
-                                    if (fee.payments && fee.payments.length > 0) {
-                                      toast({
-                                        title: "No se puede eliminar",
-                                        description: "Esta cuota tiene pagos registrados",
-                                        variant: "destructive"
-                                      });
-                                      return;
-                                    }
-                                    setFeeToDelete(fee);
-                                    setDeleteFeeDialogOpen(true);
-                                  }}
-                                >
-                                  <Trash2 className="w-4 h-4 mr-2" />
-                                  Eliminar
-                                </DropdownMenuItem>
+                                {fee.payments?.some((p: any) => p.receipt) && (
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      const lastPayment = fee.payments[fee.payments.length - 1];
+                                      const receipt = lastPayment?.receipt;
+                                      if (receipt) {
+                                        setReceiptFee(fee);
+                                        setReceiptDialog({ ...receipt, payment: lastPayment });
+                                      }
+                                    }}
+                                  >
+                                    <ReceiptIcon className="w-4 h-4 mr-2" />
+                                    Ver Recibo
+                                  </DropdownMenuItem>
+                                )}
+                                {canDeleteFees && (
+                                  <DropdownMenuItem
+                                    className="text-destructive"
+                                    onClick={() => {
+                                      setFeeToDelete(fee);
+                                      setDeleteFeeDialogOpen(true);
+                                    }}
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Eliminar
+                                  </DropdownMenuItem>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
@@ -1553,6 +1749,11 @@ export default function Finanzas() {
                     <p className="text-xs text-muted-foreground mt-1">
                       Vence: {new Date(feeToDelete.dueDate).toLocaleDateString("es-CO")}
                     </p>
+                    {feeToDelete.payments && feeToDelete.payments.length > 0 && (
+                      <p className="text-xs text-destructive font-medium mt-2">
+                        Se eliminarán también {feeToDelete.payments.length} pago(s) y sus recibos asociados.
+                      </p>
+                    )}
                   </div>
                 )}
               </AlertDialogDescription>
@@ -1570,39 +1771,114 @@ export default function Finanzas() {
         </AlertDialog>
 
         {/* Create Fee Dialog */}
-        <Dialog open={createFeeDialogOpen} onOpenChange={setCreateFeeDialogOpen}>
+        <Dialog open={createFeeDialogOpen} onOpenChange={(open) => {
+          setCreateFeeDialogOpen(open);
+          if (!open) {
+            setSelectedStudent(null);
+            setStudentSearch("");
+            setNewFeeForm({ studentId: "", feeTypeId: "", amount: "", dueDate: new Date().toISOString().split("T")[0], markAsPaid: true, paymentMethod: "CASH", reference: "", customDescription: "" });
+          }
+        }}>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
-              <DialogTitle>Crear Nueva Cuota</DialogTitle>
+              <DialogTitle>{existingPendingFee ? "Registrar Pago" : "Nueva Cuota"}</DialogTitle>
               <DialogDescription>
-                Registra una nueva cuota para un estudiante
+                {existingPendingFee
+                  ? "Registra un abono a la cuota pendiente del estudiante"
+                  : "Crea una nueva cuota o registra un pago"}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
+              {/* Student Search */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">Estudiante *</label>
-                <Select
-                  value={newFeeForm.studentId}
-                  onValueChange={(val) => setNewFeeForm({ ...newFeeForm, studentId: val })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar estudiante" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {students.map((student) => (
-                      <SelectItem key={student.id} value={String(student.id)}>
-                        {student.name} {student.lastName} - {student.admissionNo}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="relative" ref={studentSearchRef}>
+                  {selectedStudent ? (
+                    <div className="flex items-center justify-between border rounded-md p-2 bg-muted/30">
+                      <div>
+                        <p className="font-medium text-sm">{selectedStudent.name} {selectedStudent.lastName}</p>
+                        <p className="text-xs text-muted-foreground">{selectedStudent.admissionNo} - {selectedStudent.class?.name}</p>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => {
+                        setSelectedStudent(null);
+                        setNewFeeForm({ ...newFeeForm, studentId: "" });
+                        setStudentSearch("");
+                      }}>
+                        Cambiar
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Buscar por nombre, apellido o documento..."
+                          value={studentSearch}
+                          onChange={(e) => {
+                            setStudentSearch(e.target.value);
+                            setShowStudentDropdown(true);
+                          }}
+                          onFocus={() => setShowStudentDropdown(true)}
+                          className="pl-9"
+                        />
+                      </div>
+                      {showStudentDropdown && studentSearch.length >= 2 && (
+                        <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                          {students.length === 0 ? (
+                            <p className="p-3 text-sm text-muted-foreground text-center">No se encontraron estudiantes</p>
+                          ) : (
+                            students.map((s) => (
+                              <button
+                                key={s.id}
+                                className="w-full text-left px-3 py-2 hover:bg-accent text-sm border-b last:border-0"
+                                onClick={async () => {
+                                  // Fetch full student with fees for amount suggestion
+                                  try {
+                                    const fullStudent = await api.get<any>(`/students/${s.id}`);
+                                    setSelectedStudent(fullStudent);
+                                  } catch {
+                                    setSelectedStudent(s);
+                                  }
+                                  setNewFeeForm({ ...newFeeForm, studentId: String(s.id) });
+                                  setShowStudentDropdown(false);
+                                  setStudentSearch("");
+                                }}
+                              >
+                                <p className="font-medium">{s.name} {s.lastName}</p>
+                                <p className="text-xs text-muted-foreground">{s.admissionNo} - {s.class?.name}</p>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Tipo de Cuota *</label>
                 <Select
                   value={newFeeForm.feeTypeId}
-                  onValueChange={(val) => setNewFeeForm({ ...newFeeForm, feeTypeId: val })}
+                  onValueChange={(val) => {
+                    // Check if selected type is "Otro / Misceláneos"
+                    const selectedType = feeTypes?.find((t: any) => String(t.id) === val);
+                    const isOtro = selectedType?.name?.toLowerCase().includes("otro") || selectedType?.name?.toLowerCase().includes("miscel");
+
+                    if (isOtro) {
+                      // Don't auto-suggest amount for miscellaneous, reset amount and description
+                      setNewFeeForm({ ...newFeeForm, feeTypeId: val, amount: "", customDescription: "" });
+                    } else {
+                      // Auto-suggest amount from student's existing fees
+                      setNewFeeForm({ ...newFeeForm, feeTypeId: val, customDescription: "" });
+                      if (selectedStudent) {
+                        const existingFee = (selectedStudent as any).fees?.find((f: any) => String(f.feeTypeId) === val);
+                        if (existingFee) {
+                          setNewFeeForm((prev) => ({ ...prev, feeTypeId: val, amount: String(existingFee.amount) }));
+                        }
+                      }
+                    }
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar tipo" />
@@ -1617,33 +1893,424 @@ export default function Finanzas() {
                 </Select>
               </div>
 
+              {/* Custom description for "Otro / Misceláneos" */}
+              {isOtroMiscelaneo && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Descripción del concepto *</label>
+                  <div className="relative" ref={customDescRef}>
+                    <Input
+                      placeholder="Ej: Supletorio + Mensualidad, Camiseta, etc."
+                      value={newFeeForm.customDescription}
+                      onChange={(e) => {
+                        setNewFeeForm({ ...newFeeForm, customDescription: e.target.value });
+                        setShowCustomDescDropdown(true);
+                      }}
+                      onFocus={() => setShowCustomDescDropdown(true)}
+                    />
+                    {showCustomDescDropdown && customDescSuggestions.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-40 overflow-y-auto">
+                        {customDescSuggestions
+                          .filter((s) =>
+                            !newFeeForm.customDescription ||
+                            s.toLowerCase().includes(newFeeForm.customDescription.toLowerCase())
+                          )
+                          .map((suggestion, idx) => (
+                            <button
+                              key={idx}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors"
+                              onClick={() => {
+                                setNewFeeForm({ ...newFeeForm, customDescription: suggestion });
+                                setShowCustomDescDropdown(false);
+                              }}
+                            >
+                              {suggestion}
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Escribe el detalle del pago misceláneo
+                  </p>
+                </div>
+              )}
+
+              {/* Existing fee detected - show payment mode */}
+              {existingPendingFee && (
+                <div className="border rounded-lg p-3 bg-success/5 border-success/30 space-y-2">
+                  <p className="text-sm font-medium text-success">
+                    Cuota existente detectada
+                  </p>
+                  <div className="text-xs space-y-1 text-muted-foreground">
+                    <div className="flex justify-between">
+                      <span>Monto total:</span>
+                      <span className="font-mono font-medium">{formatCurrency(existingPendingFee.amount)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Pagado:</span>
+                      <span className="font-mono text-success">{formatCurrency(existingPendingFee.totalPaid || existingPendingFee.payments?.reduce((s: number, p: any) => s + p.amount, 0) || 0)}</span>
+                    </div>
+                    <div className="flex justify-between border-t pt-1">
+                      <span className="font-medium">Saldo pendiente:</span>
+                      <span className="font-mono font-medium text-destructive">
+                        {formatCurrency(existingPendingFee.balance ?? (existingPendingFee.amount - (existingPendingFee.totalPaid || existingPendingFee.payments?.reduce((s: number, p: any) => s + p.amount, 0) || 0)))}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    El pago se registrará como abono a esta cuota existente
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-2">
-                <label className="text-sm font-medium">Monto *</label>
+                <label className="text-sm font-medium">
+                  {existingPendingFee ? "Monto a abonar *" : "Monto *"}
+                </label>
                 <Input
                   type="number"
                   placeholder="0"
                   value={newFeeForm.amount}
                   onChange={(e) => setNewFeeForm({ ...newFeeForm, amount: e.target.value })}
                 />
+                {suggestedAmount && !existingPendingFee && String(suggestedAmount) !== newFeeForm.amount && (
+                  <p className="text-xs text-muted-foreground">
+                    Monto habitual: <button
+                      className="text-primary font-mono font-semibold underline"
+                      onClick={() => setNewFeeForm({ ...newFeeForm, amount: String(suggestedAmount) })}
+                    >
+                      ${suggestedAmount.toLocaleString("es-CO")}
+                    </button>
+                  </p>
+                )}
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Fecha de Vencimiento *</label>
-                <Input
-                  type="date"
-                  value={newFeeForm.dueDate}
-                  onChange={(e) => setNewFeeForm({ ...newFeeForm, dueDate: e.target.value })}
-                />
-              </div>
+              {/* Payment details - shown when paying existing fee OR when markAsPaid on new fee */}
+              {existingPendingFee ? (
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Método de pago</label>
+                    <Select
+                      value={newFeeForm.paymentMethod}
+                      onValueChange={(val: "CASH" | "TRANSFER") => setNewFeeForm({ ...newFeeForm, paymentMethod: val })}
+                    >
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CASH">Efectivo</SelectItem>
+                        <SelectItem value="TRANSFER">Transferencia</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Referencia (opcional)</label>
+                    <Input
+                      placeholder="No. de recibo o transferencia"
+                      value={newFeeForm.reference}
+                      onChange={(e) => setNewFeeForm({ ...newFeeForm, reference: e.target.value })}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Fecha de Vencimiento *</label>
+                    <Input
+                      type="date"
+                      value={newFeeForm.dueDate}
+                      onChange={(e) => setNewFeeForm({ ...newFeeForm, dueDate: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newFeeForm.markAsPaid}
+                        onChange={(e) => setNewFeeForm({ ...newFeeForm, markAsPaid: e.target.checked })}
+                        className="rounded border-gray-300"
+                      />
+                      <span className="text-sm font-medium">Registrar como pagado</span>
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      {newFeeForm.markAsPaid
+                        ? "Se creará la cuota y se registrará el pago automáticamente (aparecerá en ingresos)"
+                        : "Solo se creará la obligación de pago (deuda pendiente)"}
+                    </p>
+
+                    {newFeeForm.markAsPaid && (
+                      <div className="space-y-3 pt-1">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-muted-foreground">Método de pago</label>
+                          <Select
+                            value={newFeeForm.paymentMethod}
+                            onValueChange={(val: "CASH" | "TRANSFER") => setNewFeeForm({ ...newFeeForm, paymentMethod: val })}
+                          >
+                            <SelectTrigger className="h-8 text-sm">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="CASH">Efectivo</SelectItem>
+                              <SelectItem value="TRANSFER">Transferencia</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-muted-foreground">Referencia (opcional)</label>
+                          <Input
+                            placeholder="No. de recibo o transferencia"
+                            value={newFeeForm.reference}
+                            onChange={(e) => setNewFeeForm({ ...newFeeForm, reference: e.target.value })}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setCreateFeeDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button onClick={handleCreateFee} disabled={createFee.isPending}>
-                {createFee.isPending ? "Creando..." : "Crear Cuota"}
+              <Button onClick={handleCreateFee} disabled={createFee.isPending || createPayment.isPending}>
+                {createFee.isPending || createPayment.isPending
+                  ? "Registrando..."
+                  : existingPendingFee
+                    ? "Registrar Pago"
+                    : newFeeForm.markAsPaid ? "Crear y Registrar Pago" : "Crear Cuota"}
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Receipt View Dialog */}
+        <Dialog open={!!receiptDialog} onOpenChange={() => { setReceiptDialog(null); setReceiptFee(null); }}>
+          <DialogContent className="sm:max-w-[480px] p-0 overflow-hidden">
+            <DialogHeader className="sr-only">
+              <DialogTitle>Recibo de Pago</DialogTitle>
+              <DialogDescription>Vista del recibo de pago</DialogDescription>
+            </DialogHeader>
+            {receiptDialog && (() => {
+              const student = receiptFee?.student || {};
+              const orgName = student.organization?.name || 'Institución Educativa';
+              const isFoundisalud = orgName.toLowerCase().includes('fundisalud');
+              const licencias = isFoundisalud
+                ? 'Licencia de funcionamiento #1408 del 13 de abril del 2021'
+                : 'Licencia #0689 del 12 de abril del 2023 | Licencia #3276 del 02 de diciembre del 2024';
+              const reference = receiptDialog.payment?.reference || receiptDialog.notes || '';
+
+              return (
+              <div id="receipt-print-area-finanzas" style={{ background: 'white' }}>
+                <div style={{ background: 'linear-gradient(135deg, #1565C0 0%, #1976D2 50%, #1E88E5 100%)' }} className="px-6 pt-6 pb-6 text-white relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-10" style={{ background: '#F9A825', transform: 'translate(30%, -30%)' }} />
+                  <div className="flex items-center gap-3 mb-4 relative z-10">
+                    <img src="/logo-horizontal.png" alt="Logo" className="h-10 object-contain" />
+                  </div>
+                  <div className="relative z-10">
+                    <h2 className="text-lg font-bold tracking-widest uppercase">{orgName}</h2>
+                    {isFoundisalud && (
+                      <p className="text-blue-100 text-[11px] mt-0.5 italic">Fundación integral para la enseñanza y la salud</p>
+                    )}
+                    <p className="text-blue-100 text-xs mt-0.5">Cartagena - Arjona</p>
+                    <p className="text-blue-200 text-[9px] mt-1 leading-tight opacity-80">{licencias}</p>
+                  </div>
+                </div>
+
+                <div className="px-6 pt-4 pb-6 space-y-5">
+                  <div className="flex justify-end -mt-4 mb-1">
+                    <div className="px-4 py-1.5 rounded-full font-mono text-sm font-bold shadow-lg" style={{ background: '#F9A825', color: '#1565C0' }}>
+                      {receiptDialog.receiptNumber}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Calendar className="w-4 h-4" />
+                    <span>{new Date(receiptDialog.date || receiptDialog.createdAt).toLocaleDateString("es-CO", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                  </div>
+
+                  <div className="rounded-xl border p-4" style={{ borderColor: '#1565C020', background: '#1565C005' }}>
+                    <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                      <span className="text-muted-foreground font-medium">Estudiante</span>
+                      <span className="font-semibold">{student.name} {student.lastName || ''}</span>
+                      <span className="text-muted-foreground font-medium">Identificación</span>
+                      <span className="font-mono">{student.numeroIdentificacion || student.admissionNo}</span>
+                      <span className="text-muted-foreground font-medium">Programa</span>
+                      <span>{student.class?.name || '-'}</span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border p-4" style={{ borderColor: '#F9A82530', background: '#F9A82508' }}>
+                    <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-medium">Concepto</p>
+                    <p className="font-semibold text-base">{receiptDialog.concept}</p>
+                    {receiptDialog.payment?.method && (
+                      <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                        <CreditCard className="w-3 h-3" />
+                        {getMethodLabel(receiptDialog.payment.method)}
+                      </p>
+                    )}
+                    {reference && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        <span className="font-medium">Ref:</span> {reference}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl p-5 text-center" style={{ background: 'linear-gradient(135deg, #F9A825 0%, #F57F17 100%)' }}>
+                    <p className="text-yellow-900/70 text-xs uppercase tracking-widest mb-1 font-medium">Total Pagado</p>
+                    <p className="text-3xl font-bold font-mono text-white" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.2)' }}>
+                      ${receiptDialog.amount.toLocaleString("es-CO")}
+                    </p>
+                  </div>
+
+                  <div className="text-center pt-3 border-t space-y-1">
+                    <p className="text-[10px] text-muted-foreground">Documento generado electrónicamente</p>
+                    <div className="flex items-center justify-center gap-1">
+                      <div className="w-6 h-0.5 rounded-full" style={{ background: '#F9A825' }} />
+                      <div className="w-6 h-0.5 rounded-full" style={{ background: '#1565C0' }} />
+                      <div className="w-6 h-0.5 rounded-full" style={{ background: '#F9A825' }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              );
+            })()}
+            <div className="flex justify-end gap-2 px-6 pb-4 flex-wrap">
+              <Button variant="outline" size="sm" onClick={() => { setReceiptDialog(null); setReceiptFee(null); }}>
+                Cerrar
+              </Button>
+              <Button
+                size="sm"
+                style={{ background: '#1565C0' }}
+                onClick={async () => {
+                  const el = document.getElementById('receipt-print-area-finanzas');
+                  if (!el) return;
+                  try {
+                    const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+                    const imgData = canvas.toDataURL('image/png');
+                    const pdf = new jsPDF('p', 'mm', 'a4');
+                    const pdfWidth = pdf.internal.pageSize.getWidth();
+                    const imgWidth = pdfWidth - 20;
+                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                    pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
+                    pdf.save(`Recibo-${receiptDialog?.receiptNumber}.pdf`);
+                  } catch (err) { console.error(err); }
+                }}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                PDF Color
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (!receiptDialog || !receiptFee) return;
+                  const student = receiptFee.student || {};
+                  const orgName = student.organization?.name || 'Institución Educativa';
+                  const isFundi = orgName.toLowerCase().includes('fundisalud');
+                  const subtitle = isFundi ? 'Fundación integral para la enseñanza y la salud' : '';
+                  const lics = isFundi
+                    ? 'Licencia de funcionamiento #1408 del 13 de abril del 2021'
+                    : 'Licencia #0689 del 12 de abril del 2023 | Licencia #3276 del 02 de diciembre del 2024';
+                  const studentName = `${student.name} ${student.lastName || ''}`;
+                  const studentDoc = student.numeroIdentificacion || student.admissionNo;
+                  const programa = student.class?.name || '-';
+                  const semestre = student.section?.name || '';
+                  const dateStr = new Date(receiptDialog.date || receiptDialog.createdAt).toLocaleDateString("es-CO", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                  const method = receiptDialog.payment?.method ? getMethodLabel(receiptDialog.payment.method) : '';
+                  const ref = receiptDialog.payment?.reference || receiptDialog.notes || '';
+                  const amount = `$${receiptDialog.amount.toLocaleString("es-CO")}`;
+
+                  const receiptBlock = (copyLabel: string) => `
+                    <div class="receipt">
+                      <div class="header">
+                        <img src="/logo-horizontal.png" class="logo" alt="Logo">
+                        <div class="header-text">
+                          <div class="org-name">${orgName.toUpperCase()}</div>
+                          ${subtitle ? `<div class="org-subtitle">${subtitle}</div>` : ''}
+                          <div class="org-addr">Cartagena - Arjona</div>
+                          <div class="org-lic">${lics}</div>
+                        </div>
+                        <div class="receipt-num">${receiptDialog.receiptNumber}</div>
+                      </div>
+                      <div class="body">
+                        <div class="copy-label">${copyLabel}</div>
+                        <div class="date">${dateStr}</div>
+                        <div class="info-grid">
+                          <span class="lbl">Estudiante</span><span class="val">${studentName}</span>
+                          <span class="lbl">Identificación</span><span class="val mono">${studentDoc}</span>
+                          <span class="lbl">Programa</span><span class="val">${programa}</span>
+                          ${semestre ? `<span class="lbl">Semestre</span><span class="val">${semestre}</span>` : ''}
+                        </div>
+                        <div class="concept-row">
+                          <span class="lbl">Concepto</span>
+                          <span class="val-concept">${receiptDialog.concept}</span>
+                        </div>
+                        ${method ? `<div class="detail-row"><span class="lbl">Método</span><span class="val">${method}</span></div>` : ''}
+                        ${ref ? `<div class="detail-row"><span class="lbl">Referencia</span><span class="val">${ref}</span></div>` : ''}
+                        <div class="total-row">
+                          <span>TOTAL PAGADO</span>
+                          <span class="total-amount">${amount}</span>
+                        </div>
+                        <div class="signature-area">
+                          <div class="sig-line"><div class="line"></div><span>Firma Estudiante</span></div>
+                          <div class="sig-line"><div class="line"></div><span>Firma Autorizada</span></div>
+                        </div>
+                      </div>
+                    </div>`;
+
+                  const w = window.open('', '_blank');
+                  if (!w) return;
+                  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Recibo ${receiptDialog.receiptNumber}</title>
+<style>
+  @page { size: letter; margin: 10mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; }
+  .receipt { border: 1px solid #ccc; margin-bottom: 8mm; page-break-inside: avoid; }
+  .header { background: linear-gradient(135deg, #1565C0 0%, #1976D2 50%, #1E88E5 100%); color: white; padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+  .logo { height: 32px; flex-shrink: 0; }
+  .header-text { flex: 1; }
+  .org-name { font-size: 14px; font-weight: 800; letter-spacing: 1.5px; }
+  .org-subtitle { font-size: 9px; opacity: 0.85; font-style: italic; }
+  .org-addr { font-size: 10px; opacity: 0.8; }
+  .org-lic { font-size: 8px; opacity: 0.7; margin-top: 1px; }
+  .receipt-num { background: #F9A825; color: #1565C0; font-family: 'Courier New', monospace; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 12px; white-space: nowrap; }
+  .body { padding: 10px 16px 12px; color: #000; }
+  .copy-label { font-size: 8px; text-transform: uppercase; letter-spacing: 1px; color: #999; text-align: right; margin-bottom: 2px; }
+  .date { font-size: 11px; color: #555; margin-bottom: 8px; }
+  .info-grid { display: grid; grid-template-columns: 100px 1fr; gap: 2px 8px; font-size: 11px; margin-bottom: 8px; padding: 6px; border: 1px solid #e0e0e0; border-radius: 4px; }
+  .lbl { color: #666; font-weight: 500; font-size: 10px; }
+  .val { font-weight: 600; font-size: 11px; }
+  .val.mono { font-family: 'Courier New', monospace; }
+  .concept-row { font-size: 11px; margin-bottom: 4px; padding: 6px; border: 1px solid #e0e0e0; border-radius: 4px; }
+  .val-concept { font-weight: 700; font-size: 12px; display: block; margin-top: 2px; }
+  .detail-row { display: flex; gap: 8px; font-size: 10px; margin-bottom: 2px; padding: 0 6px; }
+  .total-row { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding: 8px 12px; border: 2px solid #333; border-radius: 4px; font-weight: 700; font-size: 12px; }
+  .total-amount { font-family: 'Courier New', monospace; font-size: 16px; }
+  .signature-area { display: flex; justify-content: space-between; margin-top: 16px; gap: 20px; }
+  .sig-line { flex: 1; text-align: center; }
+  .sig-line .line { border-top: 1px solid #333; margin-bottom: 3px; margin-top: 24px; }
+  .sig-line span { font-size: 9px; color: #555; }
+  .separator { border: none; border-top: 1px dashed #aaa; margin: 0; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style></head><body>
+<div class="page">
+  ${receiptBlock('Copia Estudiante')}
+  <hr class="separator">
+  ${receiptBlock('Copia Institución')}
+</div>
+<script>window.onload=function(){window.print();}</script>
+</body></html>`);
+                  w.document.close();
+                }}
+              >
+                <Printer className="w-4 h-4 mr-2" />
+                Imprimir x2 (Carta)
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       </div>

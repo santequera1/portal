@@ -1,10 +1,11 @@
 import { Response } from 'express';
 import prisma from '../config/database';
 import { AuthRequest } from '../types';
+import { createReceiptForPayment } from './receipt.controller';
 
 export async function getFees(req: AuthRequest, res: Response) {
   try {
-    const { studentId, classId, status, page = '1', limit = '20' } = req.query;
+    const { studentId, classId, status, organizationId, search, page = '1', limit = '20' } = req.query;
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
     const skip = (pageNum - 1) * limitNum;
@@ -12,15 +13,27 @@ export async function getFees(req: AuthRequest, res: Response) {
     const where: any = {};
     if (studentId) where.studentId = parseInt(studentId as string);
     if (status) where.status = status;
-    if (classId) where.student = { classId: parseInt(classId as string) };
+    if (classId) where.student = { ...where.student, classId: parseInt(classId as string) };
+    if (organizationId) where.student = { ...where.student, organizationId: parseInt(organizationId as string) };
+    if (search) {
+      where.student = {
+        ...where.student,
+        OR: [
+          { name: { contains: search as string } },
+          { lastName: { contains: search as string } },
+          { admissionNo: { contains: search as string } },
+          { numeroIdentificacion: { contains: search as string } },
+        ],
+      };
+    }
 
     const [fees, total] = await Promise.all([
       prisma.fee.findMany({
         where,
         include: {
-          student: { select: { id: true, name: true, admissionNo: true, class: true, section: true } },
+          student: { select: { id: true, name: true, lastName: true, admissionNo: true, numeroIdentificacion: true, class: true, section: true, organization: true } },
           feeType: true,
-          payments: true,
+          payments: { include: { receipt: true } },
         },
         skip,
         take: limitNum,
@@ -43,14 +56,50 @@ export async function getFees(req: AuthRequest, res: Response) {
 
 export async function createFee(req: AuthRequest, res: Response) {
   try {
-    const data = { ...req.body, dueDate: new Date(req.body.dueDate) };
+    const { studentId, feeTypeId, amount, dueDate, description, status, studentPaymentPlanId, installmentNumber } = req.body;
     const fee = await prisma.fee.create({
-      data,
+      data: {
+        studentId,
+        feeTypeId,
+        amount,
+        dueDate: new Date(dueDate),
+        ...(description ? { description } : {}),
+        ...(status ? { status } : {}),
+        ...(studentPaymentPlanId ? { studentPaymentPlanId } : {}),
+        ...(installmentNumber !== undefined ? { installmentNumber } : {}),
+      },
       include: { student: true, feeType: true },
     });
     res.status(201).json(fee);
   } catch (error) {
+    console.error('Error creating fee:', error);
     res.status(500).json({ error: 'Error al crear cuota' });
+  }
+}
+
+export async function updateFeeStatus(req: AuthRequest, res: Response) {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const fee = await prisma.fee.findUnique({
+      where: { id: parseInt(id) },
+      include: { payments: true },
+    });
+
+    if (!fee) {
+      return res.status(404).json({ error: 'Cuota no encontrada' });
+    }
+
+    await prisma.fee.update({
+      where: { id: parseInt(id) },
+      data: { status },
+    });
+
+    res.json({ message: 'Estado actualizado' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error al actualizar cuota' });
   }
 }
 
@@ -84,18 +133,41 @@ export async function createPayment(req: AuthRequest, res: Response) {
     await prisma.fee.update({ where: { id: feeId }, data: { status: newStatus } });
 
     // Create income transaction
-    const student = await prisma.student.findUnique({ where: { id: studentId }, select: { name: true } });
+    const feeWithType = await prisma.fee.findUnique({
+      where: { id: feeId },
+      include: { feeType: true },
+    });
+    const student = await prisma.student.findUnique({ where: { id: studentId }, select: { name: true, organizationId: true, class: { select: { name: true } } } });
+    const feeTypeName = feeWithType?.feeType?.name || 'Cuota';
+    const concept = feeWithType?.description || feeTypeName;
+    const programa = student?.class?.name ? ` (${student.class.name})` : '';
+
+    const paymentLabel = newTotalPaid >= fee.amount ? 'Pago' : 'Abono';
     await prisma.transaction.create({
       data: {
         type: 'INCOME',
-        description: `Pago de cuota - ${student?.name || 'Estudiante'}`,
+        description: `${paymentLabel} de ${concept} - ${student?.name || 'Estudiante'}${programa}`,
         amount,
-        category: 'Cuotas',
+        category: concept,
         status: 'completed',
+        organizationId: student?.organizationId || undefined,
       },
     });
 
-    res.status(201).json(payment);
+    // Auto-generate receipt
+    const receiptConceptBase = feeWithType?.description
+      ? `${feeTypeName}: ${feeWithType.description}`
+      : feeTypeName;
+    const receiptConcept = `${paymentLabel} de ${receiptConceptBase}`;
+    const receipt = await createReceiptForPayment(
+      payment.id,
+      studentId,
+      receiptConcept,
+      amount,
+      reference || undefined,
+    );
+
+    res.status(201).json({ ...payment, receipt });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error al registrar pago' });
@@ -191,7 +263,7 @@ export async function getFinanceSummary(req: AuthRequest, res: Response) {
 // Fee Types
 export async function getFeeTypes(req: AuthRequest, res: Response) {
   try {
-    const types = await prisma.feeType.findMany({ orderBy: { name: 'asc' } });
+    const types = await prisma.feeType.findMany({ orderBy: { sortOrder: 'asc' } });
     res.json(types);
   } catch (error) {
     res.status(500).json({ error: 'Error al obtener tipos de cuota' });
@@ -221,23 +293,41 @@ export async function deleteFee(req: AuthRequest, res: Response) {
   try {
     const { id } = req.params;
 
-    // Verificar que la cuota existe y obtener info
     const fee = await prisma.fee.findUnique({
       where: { id: parseInt(id) },
-      include: { payments: true },
+      include: {
+        payments: true,
+        feeType: true,
+        student: { select: { name: true } },
+      },
     });
 
     if (!fee) {
       return res.status(404).json({ error: 'Cuota no encontrada' });
     }
 
-    // Advertencia si tiene pagos
+    // Si tiene pagos, eliminar las transacciones asociadas (los pagos y recibos se eliminan en cascada)
     if (fee.payments.length > 0) {
-      return res.status(400).json({
-        error: 'No se puede eliminar una cuota con pagos registrados. Elimine los pagos primero.'
-      });
+      const concept = fee.feeType?.name || 'Cuota';
+      const studentName = fee.student?.name || 'Estudiante';
+
+      // Buscar y eliminar transacciones de ingreso generadas por estos pagos
+      for (const payment of fee.payments) {
+        await prisma.transaction.deleteMany({
+          where: {
+            type: 'INCOME',
+            amount: payment.amount,
+            description: { contains: studentName },
+            date: {
+              gte: new Date(payment.createdAt.getTime() - 5000),
+              lte: new Date(payment.createdAt.getTime() + 5000),
+            },
+          },
+        });
+      }
     }
 
+    // Eliminar la cuota (pagos y recibos se eliminan en cascada por el schema)
     await prisma.fee.delete({ where: { id: parseInt(id) } });
     res.json({ message: 'Cuota eliminada exitosamente' });
   } catch (error) {

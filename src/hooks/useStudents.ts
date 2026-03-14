@@ -11,11 +11,12 @@ interface StudentsResponse {
   totalPages: number;
 }
 
-export function useStudents(params?: { page?: number; classId?: number; sectionId?: number; search?: string; status?: string }) {
+export function useStudents(params?: { page?: number; limit?: number; classId?: number; sectionId?: number; search?: string; status?: string }) {
   const { selectedOrgId } = useOrganization();
   const queryString = new URLSearchParams();
   if (selectedOrgId) queryString.set('organizationId', String(selectedOrgId));
   if (params?.page) queryString.set('page', String(params.page));
+  if (params?.limit) queryString.set('limit', String(params.limit));
   if (params?.classId) queryString.set('classId', String(params.classId));
   if (params?.sectionId) queryString.set('sectionId', String(params.sectionId));
   if (params?.search) queryString.set('search', params.search);

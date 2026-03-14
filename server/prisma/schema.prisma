@@ -204,6 +204,7 @@ model Student {
   payments     Payment[]
   marks        Mark[]
   paymentPlans StudentPaymentPlan[]
+  receipts     Receipt[]
 }
 
 model StaffMember {
@@ -266,6 +267,7 @@ model StaffAttendance {
 model FeeType {
   id        Int      @id @default(autoincrement())
   name      String
+  sortOrder Int      @default(99)
   createdAt DateTime @default(now())
 
   fees Fee[]
@@ -338,6 +340,7 @@ model Fee {
   feeTypeId            Int
   amount               Float
   dueDate              DateTime
+  description          String?
   status               String   @default("PENDING")
   studentPaymentPlanId Int?
   installmentNumber    Int?
@@ -360,6 +363,22 @@ model Payment {
   createdAt DateTime @default(now())
 
   fee     Fee     @relation(fields: [feeId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  receipt Receipt?
+}
+
+model Receipt {
+  id            Int      @id @default(autoincrement())
+  receiptNumber String   @unique
+  paymentId     Int      @unique
+  studentId     Int
+  concept       String
+  amount        Float
+  date          DateTime @default(now())
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 }
 

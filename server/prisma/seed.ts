@@ -494,11 +494,29 @@ async function main() {
   console.log(`${students.length} total students created (15 Minerva + 22 Fundisalud)`);
 
   // Fee Types
-  const matricula = await prisma.feeType.create({ data: { name: 'Matricula' } });
-  const mensualidad = await prisma.feeType.create({ data: { name: 'Mensualidad' } });
-  await prisma.feeType.create({ data: { name: 'Transporte' } });
-  await prisma.feeType.create({ data: { name: 'Uniforme' } });
-  await prisma.feeType.create({ data: { name: 'Material Didactico' } });
+  const matricula = await prisma.feeType.create({ data: { name: 'Matricula', sortOrder: 1 } });
+  const mensualidad = await prisma.feeType.create({ data: { name: 'Mensualidad', sortOrder: 2 } });
+  await prisma.feeType.create({ data: { name: 'Transporte', sortOrder: 3 } });
+  await prisma.feeType.create({ data: { name: 'Supletorio', sortOrder: 4 } });
+  await prisma.feeType.create({ data: { name: 'Nivelación', sortOrder: 5 } });
+  await prisma.feeType.create({ data: { name: 'Uniforme', sortOrder: 6 } });
+  await prisma.feeType.create({ data: { name: 'Material Didactico', sortOrder: 7 } });
+  await prisma.feeType.create({ data: { name: 'Carnet', sortOrder: 8 } });
+  await prisma.feeType.create({ data: { name: 'Póliza', sortOrder: 9 } });
+  await prisma.feeType.create({ data: { name: 'ARL', sortOrder: 10 } });
+  await prisma.feeType.create({ data: { name: 'Prácticas', sortOrder: 11 } });
+  await prisma.feeType.create({ data: { name: 'Viáticos', sortOrder: 12 } });
+  await prisma.feeType.create({ data: { name: 'Constancia de Estudios', sortOrder: 13 } });
+  await prisma.feeType.create({ data: { name: 'Certificado de Estudios', sortOrder: 14 } });
+  await prisma.feeType.create({ data: { name: 'Copia de Diploma', sortOrder: 15 } });
+  await prisma.feeType.create({ data: { name: 'Copia de Acta', sortOrder: 16 } });
+  await prisma.feeType.create({ data: { name: 'Derecho a Grado', sortOrder: 17 } });
+  await prisma.feeType.create({ data: { name: 'Seminario', sortOrder: 18 } });
+  await prisma.feeType.create({ data: { name: 'Simposio', sortOrder: 19 } });
+  await prisma.feeType.create({ data: { name: 'Diplomado', sortOrder: 20 } });
+  await prisma.feeType.create({ data: { name: 'Curso', sortOrder: 21 } });
+  await prisma.feeType.create({ data: { name: 'Actualización', sortOrder: 22 } });
+  await prisma.feeType.create({ data: { name: 'Otro / Misceláneos', sortOrder: 99 } });
 
   // Fee Group
   await prisma.feeGroup.create({ data: { name: 'Cuotas 2024-2025', sessionId: session.id } });

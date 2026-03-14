@@ -24,6 +24,9 @@ export async function getStudents(req: AuthRequest, res: Response) {
         { numeroIdentificacion: { contains: search as string } },
         { fatherName: { contains: search as string } },
         { acudienteNombre: { contains: search as string } },
+        { phone: { contains: search as string } },
+        { email: { contains: search as string } },
+        { acudienteTelefono: { contains: search as string } },
       ];
     }
 
@@ -49,14 +52,74 @@ export async function getStudent(req: AuthRequest, res: Response) {
     const { id } = req.params;
     const student = await prisma.student.findUnique({
       where: { id: parseInt(id) },
-      include: { class: true, section: true, sede: true, fees: { include: { feeType: true, payments: true } }, attendances: { orderBy: { date: 'desc' }, take: 30 } },
+      include: {
+        class: true,
+        section: true,
+        sede: true,
+        organization: true,
+        fees: {
+          include: { feeType: true, payments: { include: { receipt: true } } },
+          orderBy: { dueDate: 'asc' },
+        },
+        receipts: {
+          include: {
+            payment: { include: { fee: { include: { feeType: true } } } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+        attendances: { orderBy: { date: 'desc' }, take: 30 },
+      },
     });
 
     if (!student) {
       return res.status(404).json({ error: 'Estudiante no encontrado' });
     }
 
-    res.json(student);
+    // Compute financial summary
+    let totalFees = 0;
+    let totalPaid = 0;
+    let nextPaymentDue: Date | null = null;
+    let nextPaymentAmount = 0;
+    const conceptSummary: Record<string, { total: number; paid: number; pending: number; count: number }> = {};
+
+    for (const fee of student.fees) {
+      const paid = fee.payments.reduce((sum: number, p: any) => sum + p.amount, 0);
+      const pending = fee.amount - paid;
+      totalFees += fee.amount;
+      totalPaid += paid;
+
+      const conceptName = fee.feeType?.name || 'Otro';
+      if (!conceptSummary[conceptName]) {
+        conceptSummary[conceptName] = { total: 0, paid: 0, pending: 0, count: 0 };
+      }
+      conceptSummary[conceptName].total += fee.amount;
+      conceptSummary[conceptName].paid += paid;
+      conceptSummary[conceptName].pending += pending;
+      conceptSummary[conceptName].count += 1;
+
+      // Find next pending fee
+      if (fee.status !== 'PAID' && pending > 0) {
+        const dueDate = new Date(fee.dueDate);
+        if (!nextPaymentDue || dueDate < nextPaymentDue) {
+          nextPaymentDue = dueDate;
+          nextPaymentAmount = pending;
+        }
+      }
+    }
+
+    const financialSummary = {
+      totalFees,
+      totalPaid,
+      totalPending: totalFees - totalPaid,
+      nextPaymentDue: nextPaymentDue?.toISOString() || null,
+      nextPaymentAmount,
+      conceptBreakdown: Object.entries(conceptSummary).map(([name, data]) => ({
+        name,
+        ...data,
+      })),
+    };
+
+    res.json({ ...student, financialSummary });
   } catch (error) {
     res.status(500).json({ error: 'Error al obtener estudiante' });
   }

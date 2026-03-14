@@ -83,6 +83,9 @@ export interface Student {
   class: ClassInfo;
   section: SectionInfo;
   sede?: Sede;
+  organization?: Organization;
+  receipts?: Receipt[];
+  financialSummary?: FinancialSummary;
   createdAt: string;
   updatedAt: string;
 }
@@ -206,6 +209,37 @@ export interface Payment {
   date: string;
   method: string;
   reference?: string;
+  receipt?: Receipt;
+}
+
+export interface Receipt {
+  id: number;
+  receiptNumber: string;
+  paymentId: number;
+  studentId: number;
+  concept: string;
+  amount: number;
+  date: string;
+  notes?: string;
+  payment?: Payment;
+  student?: any;
+}
+
+export interface FinancialSummary {
+  totalFees: number;
+  totalPaid: number;
+  totalPending: number;
+  nextPaymentDue: string | null;
+  nextPaymentAmount: number;
+  conceptBreakdown: ConceptBreakdown[];
+}
+
+export interface ConceptBreakdown {
+  name: string;
+  total: number;
+  paid: number;
+  pending: number;
+  count: number;
 }
 
 export type PaymentFrequency = 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY' | 'CUSTOM';

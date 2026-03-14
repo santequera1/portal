@@ -5,12 +5,16 @@ export const createFeeSchema = z.object({
   feeTypeId: z.number(),
   amount: z.number().positive('El monto debe ser positivo'),
   dueDate: z.string(),
+  description: z.string().optional(),
+  status: z.string().optional(),
+  studentPaymentPlanId: z.number().optional(),
+  installmentNumber: z.number().optional(),
 });
 
 export const createPaymentSchema = z.object({
   feeId: z.number(),
   studentId: z.number(),
-  amount: z.number().positive('El monto debe ser positivo'),
+  amount: z.number().min(0, 'El monto no puede ser negativo'),
   method: z.enum(['CASH', 'TRANSFER', 'CHECK']).optional(),
   reference: z.string().optional(),
 });

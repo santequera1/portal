@@ -18,12 +18,14 @@ interface FinanceSummary {
   incomeGrowth: number;
 }
 
-export function useFees(params?: { studentId?: number; classId?: number; status?: string; page?: number }) {
+export function useFees(params?: { studentId?: number; classId?: number; status?: string; page?: number; organizationId?: number; search?: string }) {
   const qs = new URLSearchParams();
   if (params?.studentId) qs.set('studentId', String(params.studentId));
   if (params?.classId) qs.set('classId', String(params.classId));
   if (params?.status) qs.set('status', params.status);
   if (params?.page) qs.set('page', String(params.page));
+  if (params?.organizationId) qs.set('organizationId', String(params.organizationId));
+  if (params?.search) qs.set('search', params.search);
 
   return useQuery({
     queryKey: ['fees', params],
@@ -34,8 +36,27 @@ export function useFees(params?: { studentId?: number; classId?: number; status?
 export function useCreateFee() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { studentId: number; feeTypeId: number; amount: number; dueDate: string }) => api.post<Fee>('/fees', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['fees'] }),
+    mutationFn: (data: Record<string, any>) => api.post<Fee>('/fees', data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fees'] });
+      qc.invalidateQueries({ queryKey: ['student'] });
+      qc.invalidateQueries({ queryKey: ['students'] });
+      qc.invalidateQueries({ queryKey: ['finance-summary'] });
+    },
+  });
+}
+
+export function useUpdateFeeStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ feeId, status }: { feeId: number; status: string }) =>
+      api.patch(`/fees/${feeId}/status`, { status }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fees'] });
+      qc.invalidateQueries({ queryKey: ['student'] });
+      qc.invalidateQueries({ queryKey: ['students'] });
+      qc.invalidateQueries({ queryKey: ['finance-summary'] });
+    },
   });
 }
 
@@ -48,6 +69,9 @@ export function useCreatePayment() {
       qc.invalidateQueries({ queryKey: ['fees'] });
       qc.invalidateQueries({ queryKey: ['transactions'] });
       qc.invalidateQueries({ queryKey: ['finance-summary'] });
+      qc.invalidateQueries({ queryKey: ['student'] });
+      qc.invalidateQueries({ queryKey: ['students'] });
+      qc.invalidateQueries({ queryKey: ['receipts'] });
     },
   });
 }
@@ -103,6 +127,10 @@ export function useDeleteFee() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['fees'] });
       qc.invalidateQueries({ queryKey: ['finance-summary'] });
+      qc.invalidateQueries({ queryKey: ['student'] });
+      qc.invalidateQueries({ queryKey: ['students'] });
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+      qc.invalidateQueries({ queryKey: ['receipts'] });
     },
   });
 }
