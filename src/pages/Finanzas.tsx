@@ -1548,7 +1548,7 @@ export default function Finanzas() {
                           {new Date(tx.date).toLocaleDateString("es-CO")}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="secondary" className="bg-muted">
+                          <Badge variant="outline" className="text-xs font-medium">
                             {tx.category}
                           </Badge>
                         </TableCell>
@@ -1571,6 +1571,34 @@ export default function Finanzas() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              {tx.type === "INCOME" && (tx.description?.includes("Pago de") || tx.description?.includes("Abono de")) && (
+                                <DropdownMenuItem
+                                  onClick={async () => {
+                                    try {
+                                      // Search for receipt matching this transaction
+                                      const res = await api.get<any>(`/receipts?limit=200`);
+                                      const receipts = res.receipts || [];
+                                      const match = receipts.find((r: any) =>
+                                        r.amount === tx.amount &&
+                                        new Date(r.date).toDateString() === new Date(tx.date).toDateString()
+                                      );
+                                      if (match) {
+                                        // Fetch full receipt with student data
+                                        const fullReceipt = await api.get<any>(`/receipts/${match.id}`);
+                                        setReceiptFee({ student: fullReceipt.student });
+                                        setReceiptDialog({ ...fullReceipt, payment: fullReceipt.payment });
+                                      } else {
+                                        toast({ title: "Recibo no encontrado", description: "No se encontró un recibo asociado a esta transacción", variant: "destructive" });
+                                      }
+                                    } catch {
+                                      toast({ title: "Error", description: "No se pudo cargar el recibo", variant: "destructive" });
+                                    }
+                                  }}
+                                >
+                                  <ReceiptIcon className="w-4 h-4 mr-2" />
+                                  Ver Recibo
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem
                                 className="text-destructive"
                                 onClick={() => {
@@ -2178,94 +2206,62 @@ export default function Finanzas() {
               </div>
               );
             })()}
-            <div className="flex justify-end gap-2 px-6 pb-4 flex-wrap">
-              <Button variant="outline" size="sm" onClick={() => { setReceiptDialog(null); setReceiptFee(null); }}>
-                Cerrar
-              </Button>
-              <Button
-                size="sm"
-                style={{ background: '#1565C0' }}
-                onClick={async () => {
-                  const el = document.getElementById('receipt-print-area-finanzas');
-                  if (!el) return;
-                  try {
-                    const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-                    const imgData = canvas.toDataURL('image/png');
-                    const pdf = new jsPDF('p', 'mm', 'a4');
-                    const pdfWidth = pdf.internal.pageSize.getWidth();
-                    const imgWidth = pdfWidth - 20;
-                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-                    pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
-                    pdf.save(`Recibo-${receiptDialog?.receiptNumber}.pdf`);
-                  } catch (err) { console.error(err); }
-                }}
-              >
-                <Download className="w-4 h-4 mr-2" />
-                PDF Color
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  if (!receiptDialog || !receiptFee) return;
-                  const student = receiptFee.student || {};
-                  const orgName = student.organization?.name || 'Institución Educativa';
-                  const isFundi = orgName.toLowerCase().includes('fundisalud');
-                  const subtitle = isFundi ? 'Fundación integral para la enseñanza y la salud' : '';
-                  const lics = isFundi
-                    ? 'Licencia de funcionamiento #1408 del 13 de abril del 2021'
-                    : 'Licencia #0689 del 12 de abril del 2023 | Licencia #3276 del 02 de diciembre del 2024';
-                  const studentName = `${student.name} ${student.lastName || ''}`;
-                  const studentDoc = student.numeroIdentificacion || student.admissionNo;
-                  const programa = student.class?.name || '-';
-                  const semestre = student.section?.name || '';
-                  const dateStr = new Date(receiptDialog.date || receiptDialog.createdAt).toLocaleDateString("es-CO", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-                  const method = receiptDialog.payment?.method ? getMethodLabel(receiptDialog.payment.method) : '';
-                  const ref = receiptDialog.payment?.reference || receiptDialog.notes || '';
-                  const amount = `$${receiptDialog.amount.toLocaleString("es-CO")}`;
+            {receiptDialog && (() => {
+              const student = receiptFee?.student || {};
+              const orgName = student.organization?.name || 'Institución Educativa';
+              const isFundi = orgName.toLowerCase().includes('fundisalud');
+              const subtitle = isFundi ? 'Fundación integral para la enseñanza y la salud' : '';
+              const lics = isFundi
+                ? 'Licencia de funcionamiento #1408 del 13 de abril del 2021'
+                : 'Licencia #0689 del 12 de abril del 2023 | Licencia #3276 del 02 de diciembre del 2024';
+              const studentName = `${student.name || ''} ${student.lastName || ''}`.trim();
+              const studentDoc = student.numeroIdentificacion || student.admissionNo || '';
+              const programa = student.class?.name || '-';
+              const semestre = student.section?.name || '';
+              const dateStr = new Date(receiptDialog.date || receiptDialog.createdAt).toLocaleDateString("es-CO", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+              const method = receiptDialog.payment?.method ? getMethodLabel(receiptDialog.payment.method) : '';
+              const ref = receiptDialog.payment?.reference || receiptDialog.notes || '';
+              const amount = `$${receiptDialog.amount.toLocaleString("es-CO")}`;
 
-                  const receiptBlock = (copyLabel: string) => `
-                    <div class="receipt">
-                      <div class="header">
-                        <img src="/logo-horizontal.png" class="logo" alt="Logo">
-                        <div class="header-text">
-                          <div class="org-name">${orgName.toUpperCase()}</div>
-                          ${subtitle ? `<div class="org-subtitle">${subtitle}</div>` : ''}
-                          <div class="org-addr">Cartagena - Arjona</div>
-                          <div class="org-lic">${lics}</div>
-                        </div>
-                        <div class="receipt-num">${receiptDialog.receiptNumber}</div>
-                      </div>
-                      <div class="body">
-                        <div class="copy-label">${copyLabel}</div>
-                        <div class="date">${dateStr}</div>
-                        <div class="info-grid">
-                          <span class="lbl">Estudiante</span><span class="val">${studentName}</span>
-                          <span class="lbl">Identificación</span><span class="val mono">${studentDoc}</span>
-                          <span class="lbl">Programa</span><span class="val">${programa}</span>
-                          ${semestre ? `<span class="lbl">Semestre</span><span class="val">${semestre}</span>` : ''}
-                        </div>
-                        <div class="concept-row">
-                          <span class="lbl">Concepto</span>
-                          <span class="val-concept">${receiptDialog.concept}</span>
-                        </div>
-                        ${method ? `<div class="detail-row"><span class="lbl">Método</span><span class="val">${method}</span></div>` : ''}
-                        ${ref ? `<div class="detail-row"><span class="lbl">Referencia</span><span class="val">${ref}</span></div>` : ''}
-                        <div class="total-row">
-                          <span>TOTAL PAGADO</span>
-                          <span class="total-amount">${amount}</span>
-                        </div>
-                        <div class="signature-area">
-                          <div class="sig-line"><div class="line"></div><span>Firma Estudiante</span></div>
-                          <div class="sig-line"><div class="line"></div><span>Firma Autorizada</span></div>
-                        </div>
-                      </div>
-                    </div>`;
+              const receiptBlock = (copyLabel: string) => `
+                <div class="receipt">
+                  <div class="header">
+                    <img src="/logo-horizontal.png" class="logo" alt="Logo">
+                    <div class="header-text">
+                      <div class="org-name">${orgName.toUpperCase()}</div>
+                      ${subtitle ? `<div class="org-subtitle">${subtitle}</div>` : ''}
+                      <div class="org-addr">Cartagena - Arjona</div>
+                      <div class="org-lic">${lics}</div>
+                    </div>
+                    <div class="receipt-num">${receiptDialog.receiptNumber}</div>
+                  </div>
+                  <div class="body">
+                    <div class="copy-label">${copyLabel}</div>
+                    <div class="date">${dateStr}</div>
+                    <div class="info-grid">
+                      <span class="lbl">Estudiante</span><span class="val">${studentName}</span>
+                      <span class="lbl">Identificación</span><span class="val mono">${studentDoc}</span>
+                      <span class="lbl">Programa</span><span class="val">${programa}</span>
+                      ${semestre ? `<span class="lbl">Semestre</span><span class="val">${semestre}</span>` : ''}
+                    </div>
+                    <div class="concept-row">
+                      <span class="lbl">Concepto</span>
+                      <span class="val-concept">${receiptDialog.concept}</span>
+                    </div>
+                    ${method ? `<div class="detail-row"><span class="lbl">Método</span><span class="val">${method}</span></div>` : ''}
+                    ${ref ? `<div class="detail-row"><span class="lbl">Referencia</span><span class="val">${ref}</span></div>` : ''}
+                    <div class="total-row">
+                      <span>TOTAL PAGADO</span>
+                      <span class="total-amount">${amount}</span>
+                    </div>
+                    <div class="signature-area">
+                      <div class="sig-line"><div class="line"></div><span>Firma Estudiante</span></div>
+                      <div class="sig-line"><div class="line"></div><span>Firma Autorizada</span></div>
+                    </div>
+                  </div>
+                </div>`;
 
-                  const w = window.open('', '_blank');
-                  if (!w) return;
-                  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Recibo ${receiptDialog.receiptNumber}</title>
-<style>
+              const printStyles = `
   @page { size: letter; margin: 10mm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Segoe UI', Arial, sans-serif; }
@@ -2295,22 +2291,63 @@ export default function Finanzas() {
   .sig-line .line { border-top: 1px solid #333; margin-bottom: 3px; margin-top: 24px; }
   .sig-line span { font-size: 9px; color: #555; }
   .separator { border: none; border-top: 1px dashed #aaa; margin: 0; }
-  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-</style></head><body>
-<div class="page">
-  ${receiptBlock('Copia Estudiante')}
-  <hr class="separator">
-  ${receiptBlock('Copia Institución')}
-</div>
-<script>window.onload=function(){window.print();}</script>
-</body></html>`);
-                  w.document.close();
-                }}
-              >
-                <Printer className="w-4 h-4 mr-2" />
-                Imprimir x2 (Carta)
-              </Button>
-            </div>
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }`;
+
+              const openPrintWindow = (html: string, title: string) => {
+                const w = window.open('', '_blank');
+                if (!w) return;
+                w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title><style>${printStyles}</style></head><body>${html}<script>window.onload=function(){window.print();}<\/script></body></html>`);
+                w.document.close();
+              };
+
+              return (
+              <div className="flex justify-end gap-2 px-6 pb-4 flex-wrap">
+                <Button variant="outline" size="sm" onClick={() => { setReceiptDialog(null); setReceiptFee(null); }}>
+                  Cerrar
+                </Button>
+                <Button
+                  size="sm"
+                  style={{ background: '#1565C0' }}
+                  onClick={() => openPrintWindow(receiptBlock(''), `Recibo ${receiptDialog.receiptNumber}`)}
+                >
+                  <Printer className="w-4 h-4 mr-2" />
+                  Imprimir
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => openPrintWindow(
+                    `${receiptBlock('Copia Estudiante')}<hr class="separator">${receiptBlock('Copia Institución')}`,
+                    `Recibo ${receiptDialog.receiptNumber}`
+                  )}
+                >
+                  <Printer className="w-4 h-4 mr-2" />
+                  Imprimir x2 (Carta)
+                </Button>
+                <Button
+                  size="sm"
+                  style={{ background: '#1565C0' }}
+                  onClick={async () => {
+                    const el = document.getElementById('receipt-print-area-finanzas');
+                    if (!el) return;
+                    try {
+                      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+                      const imgData = canvas.toDataURL('image/png');
+                      const pdf = new jsPDF('p', 'mm', 'a4');
+                      const pdfWidth = pdf.internal.pageSize.getWidth();
+                      const imgWidth = pdfWidth - 20;
+                      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                      pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
+                      pdf.save(`Recibo-${receiptDialog.receiptNumber}.pdf`);
+                    } catch (err) { console.error(err); }
+                  }}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  PDF Color
+                </Button>
+              </div>
+              );
+            })()}
           </DialogContent>
         </Dialog>
       </div>
