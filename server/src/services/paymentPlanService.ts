@@ -22,24 +22,41 @@ export async function generateFeesFromPlan(input: GenerateFeesInput) {
 
   if (!studentPlan) throw new Error('Asignación de plan no encontrada');
 
+  // Get student to determine semester
+  const student = await prisma.student.findUnique({
+    where: { id: studentId },
+    select: { semester: true },
+  });
+
   const fees = [];
 
-  // 1. Matrícula inicial (si aplica)
+  // 1. Matrículas (según semestre del estudiante)
   if (plan.enrollmentFee > 0) {
     const matriculaType = await prisma.feeType.findFirst({
       where: { name: 'Matricula' }
     });
 
     if (matriculaType) {
-      fees.push({
-        studentId,
-        feeTypeId: matriculaType.id,
-        amount: plan.enrollmentFee,
-        dueDate: startDate,
-        status: 'PENDING',
-        studentPaymentPlanId,
-        installmentNumber: 0,
-      });
+      const currentSemester = student?.semester || 1;
+      const totalSemesters = (plan as any).totalSemesters || 3;
+      const numMatriculas = Math.max(1, totalSemesters - (currentSemester - 1));
+
+      for (let m = 0; m < numMatriculas; m++) {
+        // Space matrículas by ~5 months (semester duration)
+        const matDueDate = new Date(startDate);
+        matDueDate.setMonth(matDueDate.getMonth() + (m * 5));
+
+        fees.push({
+          studentId,
+          feeTypeId: matriculaType.id,
+          amount: plan.enrollmentFee,
+          dueDate: matDueDate,
+          status: 'PENDING',
+          studentPaymentPlanId,
+          installmentNumber: 0,
+          description: `Matrícula Semestre ${currentSemester + m}`,
+        });
+      }
     }
   }
 

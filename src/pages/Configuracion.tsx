@@ -148,6 +148,7 @@ export default function Configuracion() {
     tuitionAmount: 0,
     frequency: "MONTHLY" as PaymentFrequency,
     installments: 10,
+    totalSemesters: 3,
     materialsCharge: 0,
     uniformCharge: 0,
     transportCharge: 0,
@@ -415,6 +416,7 @@ export default function Configuracion() {
       tuitionAmount: plan.tuitionAmount,
       frequency: plan.frequency,
       installments: plan.installments,
+      totalSemesters: plan.totalSemesters || 3,
       materialsCharge: plan.materialsCharge,
       uniformCharge: plan.uniformCharge,
       transportCharge: plan.transportCharge,
@@ -466,6 +468,7 @@ export default function Configuracion() {
       tuitionAmount: 0,
       frequency: "MONTHLY",
       installments: 10,
+      totalSemesters: 3,
       materialsCharge: 0,
       uniformCharge: 0,
       transportCharge: 0,
@@ -949,6 +952,7 @@ export default function Configuracion() {
                     <TableHead className="font-semibold">Cuota</TableHead>
                     <TableHead className="font-semibold">Frecuencia</TableHead>
                     <TableHead className="font-semibold text-center">Cuotas</TableHead>
+                    <TableHead className="font-semibold text-center">Semestres</TableHead>
                     <TableHead className="font-semibold text-center">Descuento</TableHead>
                     <TableHead className="w-[50px]">Acciones</TableHead>
                   </TableRow>
@@ -993,6 +997,9 @@ export default function Configuracion() {
                           </TableCell>
                           <TableCell className="text-center font-mono">
                             {plan.installments}
+                          </TableCell>
+                          <TableCell className="text-center font-mono">
+                            {(plan as any).totalSemesters || 3}
                           </TableCell>
                           <TableCell className="text-center">
                             {plan.discountPercent > 0 ? (
@@ -1370,14 +1377,26 @@ export default function Configuracion() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label>Número de Cuotas *</Label>
-                  <Input
-                    type="number"
-                    placeholder="10"
-                    value={planForm.installments || ""}
-                    onChange={(e) => setPlanForm({ ...planForm, installments: Number(e.target.value) })}
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Número de Cuotas *</Label>
+                    <Input
+                      type="number"
+                      placeholder="10"
+                      value={planForm.installments || ""}
+                      onChange={(e) => setPlanForm({ ...planForm, installments: Number(e.target.value) })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Total Semestres</Label>
+                    <Input
+                      type="number"
+                      placeholder="3"
+                      value={planForm.totalSemesters || ""}
+                      onChange={(e) => setPlanForm({ ...planForm, totalSemesters: Number(e.target.value) })}
+                    />
+                    <p className="text-xs text-muted-foreground">Matrículas automáticas según semestre</p>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Materiales</Label>
@@ -1502,14 +1521,26 @@ export default function Configuracion() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label>Número de Cuotas *</Label>
-                  <Input
-                    type="number"
-                    placeholder="10"
-                    value={planForm.installments || ""}
-                    onChange={(e) => setPlanForm({ ...planForm, installments: Number(e.target.value) })}
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Número de Cuotas *</Label>
+                    <Input
+                      type="number"
+                      placeholder="10"
+                      value={planForm.installments || ""}
+                      onChange={(e) => setPlanForm({ ...planForm, installments: Number(e.target.value) })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Total Semestres</Label>
+                    <Input
+                      type="number"
+                      placeholder="3"
+                      value={planForm.totalSemesters || ""}
+                      onChange={(e) => setPlanForm({ ...planForm, totalSemesters: Number(e.target.value) })}
+                    />
+                    <p className="text-xs text-muted-foreground">Matrículas automáticas según semestre</p>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Materiales</Label>

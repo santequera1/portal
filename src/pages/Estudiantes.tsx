@@ -231,6 +231,7 @@ export default function Estudiantes() {
 
   // ---- Sheet / dialog state ----
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [confirmCloseDialog, setConfirmCloseDialog] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
@@ -821,7 +822,18 @@ export default function Estudiantes() {
       {/* ================================================================== */}
       {/* Create / Edit Student Sheet                                        */}
       {/* ================================================================== */}
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+      <Sheet open={sheetOpen} onOpenChange={(open) => {
+        if (!open) {
+          // Check if form has data (any non-empty field)
+          const values = form.getValues();
+          const hasData = values.name || values.lastName || values.email || values.phone || values.numeroIdentificacion;
+          if (hasData && !editingStudent) {
+            setConfirmCloseDialog(true);
+            return;
+          }
+        }
+        setSheetOpen(open);
+      }}>
         <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
           <SheetHeader className="mb-6">
             <SheetTitle className="font-heading">
@@ -1504,6 +1516,30 @@ export default function Estudiantes() {
       </Sheet>
 
       {/* ================================================================== */}
+      {/* Close Form Confirmation Dialog */}
+      <AlertDialog open={confirmCloseDialog} onOpenChange={setConfirmCloseDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Descartar cambios?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tienes datos sin guardar en el formulario. ¿Deseas descartarlos?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Seguir editando</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={() => {
+                setConfirmCloseDialog(false);
+                setSheetOpen(false);
+              }}
+            >
+              Descartar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Delete Confirmation Dialog                                          */}
       {/* ================================================================== */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

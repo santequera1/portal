@@ -252,6 +252,7 @@ export interface PaymentPlan {
   tuitionAmount: number;
   frequency: PaymentFrequency;
   installments: number;
+  totalSemesters: number;
   materialsCharge: number;
   uniformCharge: number;
   transportCharge: number;

@@ -25,7 +25,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { useStudent } from '@/hooks/useStudents';
-import { useFees, useCreatePayment, useFeeTypes, useDeleteFee, useUpdateFeeStatus } from '@/hooks/useFees';
+import { useFees, useCreatePayment, useFeeTypes, useDeleteFee, useUpdateFeeStatus, useUpdateFee } from '@/hooks/useFees';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   AlertDialog,
@@ -67,6 +67,7 @@ export default function EstudianteDetalle() {
   const createPaymentMutation = useCreatePayment();
   const deleteFee = useDeleteFee();
   const updateFeeStatus = useUpdateFeeStatus();
+  const updateFee = useUpdateFee();
   const deleteReceipt = useDeleteReceipt();
   const { data: feeTypes } = useFeeTypes();
   const { user } = useAuth();
@@ -77,6 +78,10 @@ export default function EstudianteDetalle() {
   const [receiptDialog, setReceiptDialog] = useState<any>(null);
   const [expandedFees, setExpandedFees] = useState(false);
   const [deleteFeeDialogOpen, setDeleteFeeDialogOpen] = useState(false);
+  const [editingFee, setEditingFee] = useState<{ id: number; amount: string; dueDate: string } | null>(null);
+  const [selectedFeeIds, setSelectedFeeIds] = useState<Set<number>>(new Set());
+  const [bulkEditDialog, setBulkEditDialog] = useState(false);
+  const [bulkEditForm, setBulkEditForm] = useState({ amount: '', dueDate: '', status: '' });
   const [feeToDelete, setFeeToDelete] = useState<Fee | null>(null);
 
   // Payment dialog state
@@ -214,6 +219,18 @@ export default function EstudianteDetalle() {
   const totalBalance = totalFees - totalPaid;
   const paymentProgress = totalFees > 0 ? (totalPaid / totalFees) * 100 : 0;
 
+  // Deuda a la fecha: solo cuotas con vencimiento <= hoy
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  const deudaALaFecha = fees.reduce((sum: number, fee: any) => {
+    const dueDate = new Date(fee.dueDate);
+    if (dueDate <= today && fee.status !== 'PAID') {
+      const paid = fee.payments?.reduce((s: number, p: any) => s + p.amount, 0) || fee.totalPaid || 0;
+      return sum + (fee.amount - paid);
+    }
+    return sum;
+  }, 0);
+
   return (
     <MainLayout>
       <div className="space-y-6 animate-fade-in">
@@ -228,7 +245,7 @@ export default function EstudianteDetalle() {
                 {student.name} {student.lastName}
               </h1>
               <p className="text-muted-foreground">
-                {student.admissionNo} • {student.class?.name} • {student.section?.name}
+                {student.admissionNo} • {student.class?.name} {student.section?.name ? `• ${student.section.name}` : ''}{(student as any).semester ? ` • Semestre ${(student as any).semester}` : ''}
               </p>
             </div>
           </div>
@@ -320,7 +337,7 @@ export default function EstudianteDetalle() {
           {/* Tab: Finanzas */}
           <TabsContent value="finanzas" className="space-y-4">
             {/* Financial Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
               <div className="stat-card">
                 <p className="text-sm text-muted-foreground">Total a Pagar</p>
                 <p className="text-2xl font-bold font-mono">
@@ -334,10 +351,17 @@ export default function EstudianteDetalle() {
                 </p>
               </div>
               <div className="stat-card">
-                <p className="text-sm text-muted-foreground">Pendiente</p>
+                <p className="text-sm text-muted-foreground">Pendiente Total</p>
                 <p className="text-2xl font-bold font-mono text-destructive">
                   ${totalBalance.toLocaleString("es-CO")}
                 </p>
+              </div>
+              <div className="stat-card border-2 border-orange-300 bg-orange-50">
+                <p className="text-sm text-orange-700 font-medium">Deuda a la Fecha</p>
+                <p className="text-2xl font-bold font-mono text-orange-600">
+                  ${deudaALaFecha.toLocaleString("es-CO")}
+                </p>
+                <p className="text-xs text-orange-500 mt-1">Solo cuotas vencidas</p>
               </div>
               <div className="stat-card">
                 <p className="text-sm text-muted-foreground">Saldo a Favor</p>
@@ -412,7 +436,47 @@ export default function EstudianteDetalle() {
             {/* Fees Table */}
             <div className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
               <div className="p-4 border-b border-border flex items-center justify-between">
-                <h3 className="font-semibold">Historial de Cuotas</h3>
+                <div className="flex items-center gap-3">
+                  <h3 className="font-semibold">Historial de Cuotas</h3>
+                  {selectedFeeIds.size > 0 && canDeleteFees && (
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary">{selectedFeeIds.size} seleccionadas</Badge>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          setBulkEditForm({ amount: '', dueDate: '', status: '' });
+                          setBulkEditDialog(true);
+                        }}
+                      >
+                        <Pencil className="w-3 h-3 mr-1" /> Editar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="h-7 text-xs"
+                        onClick={async () => {
+                          if (!confirm(`¿Eliminar ${selectedFeeIds.size} cuotas seleccionadas?`)) return;
+                          try {
+                            for (const feeId of selectedFeeIds) {
+                              await deleteFee.mutateAsync(feeId);
+                            }
+                            toast({ title: `${selectedFeeIds.size} cuotas eliminadas` });
+                            setSelectedFeeIds(new Set());
+                          } catch (err: any) {
+                            toast({ title: "Error", description: err.message, variant: "destructive" });
+                          }
+                        }}
+                      >
+                        <Trash2 className="w-3 h-3 mr-1" /> Eliminar
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSelectedFeeIds(new Set())}>
+                        Deseleccionar
+                      </Button>
+                    </div>
+                  )}
+                </div>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -428,6 +492,22 @@ export default function EstudianteDetalle() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
+                    {canDeleteFees && (
+                      <TableHead className="w-10">
+                        <input
+                          type="checkbox"
+                          className="rounded border-gray-300"
+                          checked={fees.length > 0 && selectedFeeIds.size === fees.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedFeeIds(new Set(fees.map((f: any) => f.id)));
+                            } else {
+                              setSelectedFeeIds(new Set());
+                            }
+                          }}
+                        />
+                      </TableHead>
+                    )}
                     <TableHead>Mes</TableHead>
                     <TableHead>Concepto</TableHead>
                     <TableHead>Monto</TableHead>
@@ -449,16 +529,59 @@ export default function EstudianteDetalle() {
                     (expandedFees ? fees : fees.slice(0, 5)).map((fee: any) => {
                       const feePaid = fee.payments?.reduce((s: number, p: any) => s + p.amount, 0) || fee.totalPaid || 0;
                       const feePending = fee.amount - feePaid;
+                      const isEditing = editingFee?.id === fee.id;
                       return (
-                        <TableRow key={fee.id} className={fee.status === 'PAID' ? 'opacity-60' : ''}>
+                        <TableRow key={fee.id} className={`${fee.status === 'PAID' ? 'opacity-60' : ''} ${selectedFeeIds.has(fee.id) ? 'bg-primary/5' : ''}`}>
+                          {canDeleteFees && (
+                            <TableCell className="w-10">
+                              <input
+                                type="checkbox"
+                                className="rounded border-gray-300"
+                                checked={selectedFeeIds.has(fee.id)}
+                                onChange={(e) => {
+                                  const next = new Set(selectedFeeIds);
+                                  if (e.target.checked) next.add(fee.id);
+                                  else next.delete(fee.id);
+                                  setSelectedFeeIds(next);
+                                }}
+                              />
+                            </TableCell>
+                          )}
                           <TableCell className="text-muted-foreground text-xs capitalize">
                             {fee.installmentNumber && fee.installmentNumber > 0
                               ? new Date(fee.dueDate).toLocaleDateString("es-CO", { month: 'long' })
                               : '-'}
                           </TableCell>
-                          <TableCell>{fee.feeType?.name}</TableCell>
+                          <TableCell>{fee.description || fee.feeType?.name}</TableCell>
                           <TableCell className="font-mono">
-                            ${fee.amount.toLocaleString()}
+                            {isEditing && canDeleteFees ? (
+                              <Input
+                                type="number"
+                                className="h-7 w-24 text-xs font-mono"
+                                value={editingFee.amount}
+                                onChange={(e) => setEditingFee({ ...editingFee, amount: e.target.value })}
+                                onKeyDown={async (e) => {
+                                  if (e.key === 'Enter') {
+                                    try {
+                                      await updateFee.mutateAsync({ feeId: fee.id, amount: parseFloat(editingFee.amount), dueDate: editingFee.dueDate });
+                                      toast({ title: "Cuota actualizada" });
+                                      setEditingFee(null);
+                                    } catch (err: any) {
+                                      toast({ title: "Error", description: err.message, variant: "destructive" });
+                                    }
+                                  } else if (e.key === 'Escape') setEditingFee(null);
+                                }}
+                                autoFocus
+                              />
+                            ) : (
+                              <span
+                                className={canDeleteFees ? "cursor-pointer hover:bg-muted/50 px-1 rounded" : ""}
+                                onDoubleClick={() => canDeleteFees && setEditingFee({ id: fee.id, amount: String(fee.amount), dueDate: new Date(fee.dueDate).toISOString().split('T')[0] })}
+                                title={canDeleteFees ? "Doble clic para editar" : ""}
+                              >
+                                ${fee.amount.toLocaleString()}
+                              </span>
+                            )}
                           </TableCell>
                           <TableCell className="font-mono text-success">
                             ${feePaid.toLocaleString()}
@@ -467,7 +590,33 @@ export default function EstudianteDetalle() {
                             ${feePending.toLocaleString()}
                           </TableCell>
                           <TableCell className="text-sm">
-                            {new Date(fee.dueDate).toLocaleDateString("es-CO")}
+                            {isEditing && canDeleteFees ? (
+                              <Input
+                                type="date"
+                                className="h-7 w-32 text-xs"
+                                value={editingFee.dueDate}
+                                onChange={(e) => setEditingFee({ ...editingFee, dueDate: e.target.value })}
+                                onKeyDown={async (e) => {
+                                  if (e.key === 'Enter') {
+                                    try {
+                                      await updateFee.mutateAsync({ feeId: fee.id, amount: parseFloat(editingFee.amount), dueDate: editingFee.dueDate });
+                                      toast({ title: "Cuota actualizada" });
+                                      setEditingFee(null);
+                                    } catch (err: any) {
+                                      toast({ title: "Error", description: err.message, variant: "destructive" });
+                                    }
+                                  } else if (e.key === 'Escape') setEditingFee(null);
+                                }}
+                              />
+                            ) : (
+                              <span
+                                className={canDeleteFees ? "cursor-pointer hover:bg-muted/50 px-1 rounded" : ""}
+                                onDoubleClick={() => canDeleteFees && setEditingFee({ id: fee.id, amount: String(fee.amount), dueDate: new Date(fee.dueDate).toISOString().split('T')[0] })}
+                                title={canDeleteFees ? "Doble clic para editar" : ""}
+                              >
+                                {new Date(fee.dueDate).toLocaleDateString("es-CO")}
+                              </span>
+                            )}
                           </TableCell>
                           <TableCell>
                             {canDeleteFees ? (
@@ -502,17 +651,53 @@ export default function EstudianteDetalle() {
                           </TableCell>
                           {canDeleteFees && (
                             <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                                onClick={() => {
-                                  setFeeToDelete(fee);
-                                  setDeleteFeeDialogOpen(true);
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                              <div className="flex gap-1">
+                                {isEditing ? (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 w-8 p-0 text-success hover:text-success"
+                                      onClick={async () => {
+                                        try {
+                                          await updateFee.mutateAsync({ feeId: fee.id, amount: parseFloat(editingFee.amount), dueDate: editingFee.dueDate });
+                                          toast({ title: "Cuota actualizada" });
+                                          setEditingFee(null);
+                                        } catch (err: any) {
+                                          toast({ title: "Error", description: err.message, variant: "destructive" });
+                                        }
+                                      }}
+                                    >
+                                      ✓
+                                    </Button>
+                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setEditingFee(null)}>
+                                      ✕
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 w-8 p-0 text-muted-foreground hover:text-primary"
+                                      onClick={() => setEditingFee({ id: fee.id, amount: String(fee.amount), dueDate: new Date(fee.dueDate).toISOString().split('T')[0] })}
+                                    >
+                                      <Pencil className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                      onClick={() => {
+                                        setFeeToDelete(fee);
+                                        setDeleteFeeDialogOpen(true);
+                                      }}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
                             </TableCell>
                           )}
                         </TableRow>
@@ -1202,6 +1387,65 @@ export default function EstudianteDetalle() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Bulk Edit Dialog */}
+      <Dialog open={bulkEditDialog} onOpenChange={setBulkEditDialog}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Editar {selectedFeeIds.size} cuotas</DialogTitle>
+            <DialogDescription>Solo se modificarán los campos que completes. Deja vacío lo que no quieras cambiar.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Monto</Label>
+              <Input
+                type="number"
+                placeholder="Nuevo monto (dejar vacío para no cambiar)"
+                value={bulkEditForm.amount}
+                onChange={(e) => setBulkEditForm({ ...bulkEditForm, amount: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Estado</Label>
+              <Select value={bulkEditForm.status} onValueChange={(v) => setBulkEditForm({ ...bulkEditForm, status: v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="No cambiar" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PAID">Pagado</SelectItem>
+                  <SelectItem value="PARTIAL">Parcial/Abono</SelectItem>
+                  <SelectItem value="PENDING">Pendiente</SelectItem>
+                  <SelectItem value="OVERDUE">Vencido</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkEditDialog(false)}>Cancelar</Button>
+            <Button onClick={async () => {
+              try {
+                for (const feeId of selectedFeeIds) {
+                  const updates: any = {};
+                  if (bulkEditForm.amount) updates.amount = parseFloat(bulkEditForm.amount);
+                  if (bulkEditForm.status) {
+                    await updateFeeStatus.mutateAsync({ feeId, status: bulkEditForm.status });
+                  }
+                  if (bulkEditForm.amount) {
+                    await updateFee.mutateAsync({ feeId, amount: parseFloat(bulkEditForm.amount) });
+                  }
+                }
+                toast({ title: `${selectedFeeIds.size} cuotas actualizadas` });
+                setSelectedFeeIds(new Set());
+                setBulkEditDialog(false);
+              } catch (err: any) {
+                toast({ title: "Error", description: err.message, variant: "destructive" });
+              }
+            }}>
+              Guardar cambios
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Receipt AlertDialog */}
       <AlertDialog open={!!receiptToDelete} onOpenChange={(open) => { if (!open) setReceiptToDelete(null); }}>

@@ -185,6 +185,7 @@ model Student {
   sectionId        Int
   organizationId   Int?
   sedeId           Int?
+  semester         Int?
   balance          Float     @default(0)
   enrollmentDate   DateTime  @default(now())
   exalumno         Boolean   @default(false)
@@ -292,6 +293,7 @@ model PaymentPlan {
   tuitionAmount   Float
   frequency       String // WEEKLY, BIWEEKLY, MONTHLY, QUARTERLY, YEARLY, CUSTOM
   installments    Int
+  totalSemesters  Int    @default(3) // Total semesters in the program
 
   // Additional charges
   materialsCharge  Float @default(0)

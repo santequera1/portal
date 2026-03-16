@@ -60,6 +60,11 @@ export async function deletePaymentPlan(req: AuthRequest, res: Response) {
       });
     }
 
+    // Delete inactive student plan assignments first (foreign key constraint)
+    await prisma.studentPaymentPlan.deleteMany({
+      where: { paymentPlanId: parseInt(id) }
+    });
+
     await prisma.paymentPlan.delete({ where: { id: parseInt(id) } });
     res.json({ message: 'Plan eliminado exitosamente' });
   } catch (error) {

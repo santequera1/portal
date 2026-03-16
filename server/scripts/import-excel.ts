@@ -267,6 +267,14 @@ async function importFundisalud(sheet: XLSX.WorkSheet) {
     // Capitalize words
     const capitalize = (s: string) => s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 
+    // Determine semester-based plan
+    const sem = parseInt(semestre) || 1;
+    // 1st semester: 3 matrículas + 15 cuotas
+    // 2nd semester: 2 matrículas + 10 cuotas
+    // 3rd semester: 1 matrícula + 5 cuotas
+    const numMatriculas = sem === 1 ? 3 : sem === 2 ? 2 : 1;
+    const numCuotas = sem === 1 ? 15 : sem === 2 ? 10 : 5;
+
     try {
       const student = await prisma.student.create({
         data: {
@@ -289,26 +297,29 @@ async function importFundisalud(sheet: XLSX.WorkSheet) {
           sectionId,
           organizationId: orgIds['fundisalud'] || 2,
           sedeId: sedeIds['fundisalud'] || 1,
+          semester: sem,
           balance: 0,
           status: 'active',
         },
       });
 
-      await prisma.fee.create({
-        data: {
-          studentId: student.id,
-          feeTypeId: feeTypeIds['matricula'] || 1,
-          amount: valorMatricula,
-          dueDate: new Date(2026, 1, 1),
-          status: 'PENDING',
-        },
-      });
+      // Create matrículas (one per semester remaining)
+      for (let mat = 0; mat < numMatriculas; mat++) {
+        await prisma.fee.create({
+          data: {
+            studentId: student.id,
+            feeTypeId: feeTypeIds['matricula'] || 1,
+            amount: valorMatricula,
+            dueDate: new Date(2026, 1 + (mat * 5), 1), // Feb, Jul, Dec approx
+            status: 'PENDING',
+            description: `Matrícula Semestre ${sem + mat}`,
+          },
+        });
+        totalMatriculas += valorMatricula;
+      }
 
-      const numMeses = totalAnual > 0 && valorPension > 0
-        ? Math.round((totalAnual - valorMatricula) / valorPension)
-        : 10;
-
-      for (let m = 0; m < numMeses; m++) {
+      // Create monthly installments
+      for (let m = 0; m < numCuotas; m++) {
         await prisma.fee.create({
           data: {
             studentId: student.id,
@@ -319,10 +330,12 @@ async function importFundisalud(sheet: XLSX.WorkSheet) {
             installmentNumber: m + 1,
           },
         });
+        totalPensiones += valorPension;
       }
 
+      totalFees += numMatriculas + numCuotas;
       imported++;
-      console.log(`  [Fundisalud] ${nombre} ${apellido} - ${programa} - Sem ${semestre} - Matrícula: $${valorMatricula.toLocaleString()}, Pensión: $${valorPension.toLocaleString()}/mes x${numMeses} = Total: $${totalAnual.toLocaleString()}`);
+      console.log(`  [Fundisalud] ${nombre} ${apellido} - ${programa} - Sem ${sem} - ${numMatriculas} matrículas x $${valorMatricula.toLocaleString()} + ${numCuotas} cuotas x $${valorPension.toLocaleString()}/mes`);
     } catch (err: any) {
       console.error(`  ERROR importing ${nombre} ${apellido}: ${err.message}`);
     }

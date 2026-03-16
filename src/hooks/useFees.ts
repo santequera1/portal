@@ -56,6 +56,8 @@ export function useUpdateFeeStatus() {
       qc.invalidateQueries({ queryKey: ['student'] });
       qc.invalidateQueries({ queryKey: ['students'] });
       qc.invalidateQueries({ queryKey: ['finance-summary'] });
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+      qc.invalidateQueries({ queryKey: ['receipts'] });
     },
   });
 }
@@ -117,6 +119,20 @@ export function useDeleteFeeType() {
   return useMutation({
     mutationFn: (id: number) => api.delete(`/fees/types/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['fee-types'] }),
+  });
+}
+
+export function useUpdateFee() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ feeId, ...data }: { feeId: number; amount?: number; dueDate?: string; description?: string; feeTypeId?: number }) =>
+      api.put<Fee>(`/fees/${feeId}`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fees'] });
+      qc.invalidateQueries({ queryKey: ['student'] });
+      qc.invalidateQueries({ queryKey: ['students'] });
+      qc.invalidateQueries({ queryKey: ['finance-summary'] });
+    },
   });
 }
 

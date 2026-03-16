@@ -77,6 +77,28 @@ export async function createFee(req: AuthRequest, res: Response) {
   }
 }
 
+export async function updateFee(req: AuthRequest, res: Response) {
+  try {
+    const { id } = req.params;
+    const { amount, dueDate, description, feeTypeId } = req.body;
+    const updateData: any = {};
+    if (amount !== undefined) updateData.amount = amount;
+    if (dueDate !== undefined) updateData.dueDate = new Date(dueDate);
+    if (description !== undefined) updateData.description = description;
+    if (feeTypeId !== undefined) updateData.feeTypeId = feeTypeId;
+
+    const fee = await prisma.fee.update({
+      where: { id: parseInt(id) },
+      data: updateData,
+      include: { student: true, feeType: true, payments: true },
+    });
+    res.json(fee);
+  } catch (error) {
+    console.error('Error updating fee:', error);
+    res.status(500).json({ error: 'Error al actualizar cuota' });
+  }
+}
+
 export async function updateFeeStatus(req: AuthRequest, res: Response) {
   try {
     const { id } = req.params;
@@ -89,6 +111,17 @@ export async function updateFeeStatus(req: AuthRequest, res: Response) {
 
     if (!fee) {
       return res.status(404).json({ error: 'Cuota no encontrada' });
+    }
+
+    // If reverting to PENDING, delete associated payments, receipts and transactions
+    if (status === 'PENDING' && fee.payments.length > 0) {
+      const paymentIds = fee.payments.map(p => p.id);
+
+      // Delete receipts linked to these payments
+      await prisma.receipt.deleteMany({ where: { paymentId: { in: paymentIds } } });
+
+      // Delete the payments
+      await prisma.payment.deleteMany({ where: { feeId: fee.id } });
     }
 
     await prisma.fee.update({
