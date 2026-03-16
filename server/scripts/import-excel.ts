@@ -233,6 +233,9 @@ async function importMinerva(sheet: XLSX.WorkSheet) {
 async function importFundisalud(sheet: XLSX.WorkSheet) {
   const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as any[][];
   let imported = 0;
+  let totalFees = 0;
+  let totalMatriculas = 0;
+  let totalPensiones = 0;
 
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
